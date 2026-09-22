@@ -11,6 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as TagsRouteImport } from './routes/tags'
+import { Route as GroupsIndexRouteImport } from './routes/groups/index'
+import { Route as GroupsGroupIdRouteImport } from './routes/groups/$groupId'
 import { Route as PeopleIndexRouteImport } from './routes/people/index'
 import { Route as PeoplePersonIdRouteImport } from './routes/people/$personId'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
@@ -23,6 +26,21 @@ const IndexRoute = IndexRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TagsRoute = TagsRouteImport.update({
+  id: '/tags',
+  path: '/tags',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GroupsIndexRoute = GroupsIndexRouteImport.update({
+  id: '/groups/',
+  path: '/groups/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const GroupsGroupIdRoute = GroupsGroupIdRouteImport.update({
+  id: '/groups/$groupId',
+  path: '/groups/$groupId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PeopleIndexRoute = PeopleIndexRouteImport.update({
@@ -44,14 +62,20 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/tags': typeof TagsRoute
+  '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
+  '/groups/': typeof GroupsIndexRoute
   '/people/': typeof PeopleIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/tags': typeof TagsRoute
+  '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
+  '/groups': typeof GroupsIndexRoute
   '/people': typeof PeopleIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
@@ -59,20 +83,42 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/tags': typeof TagsRoute
+  '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
+  '/groups/': typeof GroupsIndexRoute
   '/people/': typeof PeopleIndexRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/people/$personId' | '/people/' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/tags'
+    | '/groups/$groupId'
+    | '/people/$personId'
+    | '/groups/'
+    | '/people/'
+    | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/people/$personId' | '/people' | '/api/auth/$'
+  to:
+    | '/'
+    | '/login'
+    | '/tags'
+    | '/groups/$groupId'
+    | '/people/$personId'
+    | '/groups'
+    | '/people'
+    | '/api/auth/$'
   id:
     | '__root__'
     | '/'
     | '/login'
+    | '/tags'
+    | '/groups/$groupId'
     | '/people/$personId'
+    | '/groups/'
     | '/people/'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
@@ -80,7 +126,10 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  TagsRoute: typeof TagsRoute
+  GroupsGroupIdRoute: typeof GroupsGroupIdRoute
   PeoplePersonIdRoute: typeof PeoplePersonIdRoute
+  GroupsIndexRoute: typeof GroupsIndexRoute
   PeopleIndexRoute: typeof PeopleIndexRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
@@ -99,6 +148,27 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/tags': {
+      id: '/tags'
+      path: '/tags'
+      fullPath: '/tags'
+      preLoaderRoute: typeof TagsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/groups/': {
+      id: '/groups/'
+      path: '/groups'
+      fullPath: '/groups/'
+      preLoaderRoute: typeof GroupsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/groups/$groupId': {
+      id: '/groups/$groupId'
+      path: '/groups/$groupId'
+      fullPath: '/groups/$groupId'
+      preLoaderRoute: typeof GroupsGroupIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/people/': {
@@ -128,7 +198,10 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  TagsRoute: TagsRoute,
+  GroupsGroupIdRoute: GroupsGroupIdRoute,
   PeoplePersonIdRoute: PeoplePersonIdRoute,
+  GroupsIndexRoute: GroupsIndexRoute,
   PeopleIndexRoute: PeopleIndexRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }

@@ -62,3 +62,15 @@ bun run test: Test Files 4 passed; Tests 65 passed
 ```
 
 The compiled Worker tests create, edit, filter, paginate, and delete people; verify deleted records return 404 and disappear from lists; and assert recorded field diffs. No automated browser E2E was added.
+
+## Phase 4 — passed
+
+Added group/tag management, group detail with bulk membership editing, profile membership controls, and selected-people bulk actions. Tags normalize to lowercase, duplicate creation is idempotent, and merges preserve overlapping memberships without orphaned rows. Bulk operations and their audit events use atomic D1 batches; counts exclude deleted people. Group deletion requires an empty group or explicit membership removal.
+
+```text
+bun run typecheck: Tasks: 2 successful, 2 total
+bun run build: Tasks: 1 successful, 1 total
+bun run test: Test Files 4 passed; Tests 96 passed
+```
+
+Compiled Worker tests cover every new function for admin/editor/viewer/anonymous, multiple groups per person, duplicate membership audit suppression, nonempty-group deletion protection, lowercase tag deduplication, overlapping tag merge, and PRAGMA foreign_key_check with no violations. Database access remains behind protectedFn; bootstrap and Better Auth internals are the documented exceptions.

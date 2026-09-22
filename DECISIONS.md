@@ -48,3 +48,9 @@ Complete phases 0–10 in order. Every phase requires passing typecheck, its acc
 - TanStack Table 9 uses `useTable`, explicit features, and typed column helpers. Forms use TanStack Form; shared UI dependencies are declared in their owning workspace.
 - Generated TanStack route and Wrangler runtime declarations contain framework-authored broad types; application-authored code contains no explicit `any` or suppression directives.
 - Commit with the configured repository author, without co-author trailers. Checkpoint phases 0–3 together; subsequent phases receive separate verified commits.
+
+## Phase 4
+
+- Group/tag counts include visible people only. Group deletion still requires explicit removal of all stored memberships, including soft-deleted people, to protect retained relationship history.
+- Bulk mutations accept at most 100 people and execute all changes and associated audit inserts in one atomic D1 batch. Duplicate memberships produce no extra audit events.
+- Tag merges preserve source memberships, deduplicate overlaps, and remove the source tag in the same batch; soft-deleted people's relationships are preserved.

@@ -14,6 +14,7 @@ import { loadIdentity } from "../../auth/route-access"
 import { createPerson, deletePerson, getPeopleFilters, listPeople } from "../../features/people/people.functions"
 import { PersonForm } from "../../features/people/person-form"
 import { peopleQuery, personStatus } from "../../features/people/validation"
+import { BulkActions } from "../../features/taxonomy/bulk-actions"
 
 export const Route = createFileRoute("/people/")({ beforeLoad: loadIdentity, component: PeoplePage })
 const features = tableFeatures({})
@@ -28,11 +29,13 @@ function PeoplePage() {
   const [organization, setOrganization] = useState(""), [groupId, setGroupId] = useState(""), [tagId, setTagId] = useState("")
   const [sort, setSort] = useState<"name" | "organization" | "status" | "updatedAt">("updatedAt"), [descending, setDescending] = useState(true)
   const [creating, setCreating] = useState(false), [deleting, setDeleting] = useState<PersonRow | null>(null), [deleteBusy, setDeleteBusy] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
   useEffect(() => { const timer = setTimeout(() => { setDebounced(search); setPage(0) }, 300); return () => clearTimeout(timer) }, [search])
   const input = peopleQuery.parse({ page, search: debounced, status: status || undefined, organization: organization || undefined, groupId: groupId || undefined, tagId: tagId || undefined, sort, desc: descending })
   const result = useQuery({ queryKey: ["people", input], queryFn: () => listPeople({ data: input }) })
   const filters = useQuery({ queryKey: ["people-filters"], queryFn: () => getPeopleFilters() })
   const columns = useMemo(() => column.columns([
+    column.display({ id: "select", header: "Select", cell: ({ row }) => user.role !== "viewer" && <input type="checkbox" aria-label={`Select ${row.original.name}`} checked={selected.includes(row.original.id)} onChange={() => setSelected((ids) => ids.includes(row.original.id) ? ids.filter((id) => id !== row.original.id) : [...ids, row.original.id])} /> }),
     column.accessor("name", { header: "Name", cell: ({ row }) => <Link className="font-medium text-primary hover:underline" to="/people/$personId" params={{ personId: row.original.id }}>{row.original.name}</Link> }),
     column.accessor("organization", { header: "Organization", cell: ({ getValue }) => getValue() || "—" }),
     column.accessor("rolePosition", { header: "Role / position", cell: ({ getValue }) => getValue() || "—" }),
@@ -41,7 +44,7 @@ function PeoplePage() {
     column.display({ id: "tags", header: "Tags", cell: ({ row }) => row.original.tags.slice(0, 2).map((tag) => <Badge key={tag.id} variant="outline" className="mr-1">{tag.name}</Badge>) }),
     column.accessor("updatedAt", { header: "Updated", cell: ({ getValue }) => new Date(getValue()).toLocaleDateString() }),
     column.display({ id: "actions", header: "", cell: ({ row }) => user.role !== "viewer" && <Button size="sm" variant="ghost" onClick={() => setDeleting(row.original)}>Delete</Button> }),
-  ]), [user.role])
+  ]), [user.role, selected])
   const table = useTable({ features, columns, data: result.data?.rows ?? emptyRows })
   const selectClass = "h-9 rounded-md border bg-background px-3 text-sm"
   return <Workspace name={user.name}>
@@ -55,6 +58,7 @@ function PeoplePage() {
       <select aria-label="Sort people" className={selectClass} value={sort} onChange={(event) => { setSort(peopleQuery.shape.sort.parse(event.target.value)); setPage(0) }}><option value="updatedAt">Last updated</option><option value="name">Name</option><option value="organization">Organization</option><option value="status">Status</option></select>
       <Button variant="outline" aria-label="Toggle sort direction" onClick={() => setDescending(!descending)}>{descending ? "↓" : "↑"}</Button>
     </div>
+    {user.role !== "viewer" && <BulkActions ids={selected} clear={() => setSelected([])} />}
     <div className="rounded-lg border bg-card">
       {result.isPending ? <div className="space-y-3 p-5">{Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-10 w-full" />)}</div> : result.isError ? <div className="p-8" role="alert">Unable to load people. <Button variant="link" onClick={() => void result.refetch()}>Try again</Button></div> : !result.data.rows.length ? <div className="p-12 text-center text-sm text-muted-foreground">{debounced || status || organization || groupId || tagId ? "No matching people — adjust your filters." : "No people yet — add your first contact."}</div> : <Table>
         <TableHeader>{table.getHeaderGroups().map((header) => <TableRow key={header.id}>{header.headers.map((cell) => <TableHead key={cell.id}><table.FlexRender header={cell} /></TableHead>)}</TableRow>)}</TableHeader>

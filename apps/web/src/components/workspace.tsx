@@ -12,6 +12,8 @@ export function Workspace({ children, name }: { children: ReactNode; name: strin
       <Link to="/" className="flex items-center gap-2 font-semibold"><span className="grid size-8 place-items-center rounded-md bg-primary text-xs text-primary-foreground">IG</span>IdeaGap</Link>
       <nav className="ml-6 flex gap-5 text-sm"><Link to="/" activeProps={{ className: "font-semibold text-primary" }} activeOptions={{ exact: true }}>Overview</Link><Link to="/people" activeProps={{ className: "font-semibold text-primary" }}>People</Link></nav>
       <span className="ml-auto text-sm text-muted-foreground">{name}</span>
+      <Link to="/groups" className="text-sm" activeProps={{ className: "font-semibold text-primary" }}>Groups</Link>
+      <Link to="/tags" className="text-sm" activeProps={{ className: "font-semibold text-primary" }}>Tags</Link>
       <PeopleSearch />
       <Button size="sm" variant="ghost" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>Theme</Button>
       <Button size="sm" variant="outline" onClick={async () => { await authClient.signOut(); window.location.assign("/login") }}>Sign out</Button>

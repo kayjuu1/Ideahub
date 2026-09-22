@@ -24,7 +24,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
         functions.set(match[2], match[1])
       }
     }
-    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson"])
+    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus"].sort())
     worker = new Miniflare(convertV4MiniflareOptions({
       modules: [
         { type: "ESModule", path: resolve("dist/server/index.js") },
@@ -60,6 +60,10 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     }
     for (const role of ["admin", "editor", "viewer"]) {
       await database.prepare("INSERT INTO people(id,name,organization,status,created_by,created_at,updated_at) VALUES (?,?,'IdeaGap','active','admin',1,1)").bind(`person-${role}`, `Person ${role}`).run()
+      await database.prepare("INSERT INTO groups(id,name,color,created_at,updated_at) VALUES (?,?,'#123456',1,1)").bind(`group-${role}`, `Group ${role}`).run()
+      for (const prefix of ["source", "target", "delete"]) {
+        await database.prepare("INSERT INTO tags(id,name,color,created_at) VALUES (?,?,'#123456',1)").bind(`${prefix}-${role}`, `${prefix}-${role}`).run()
+      }
     }
   }, 60_000)
 
@@ -125,6 +129,51 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     const events = await database.prepare("SELECT action,metadata FROM activity_log WHERE entity_id='person-admin' ORDER BY created_at,id").all<{ action: string; metadata: string }>()
     expect(events.results.map((row) => row.action)).toEqual(["updated", "deleted"])
     expect(JSON.parse(events.results[0].metadata).changes.status).toEqual({ old: "active", new: "paused" })
+  })
+  const taxonomyCalls = [
+    { name: "listTaxonomy", method: "GET", write: false, data: (_role: string) => undefined },
+    { name: "getMemberships", method: "GET", write: false, data: (_role: string) => ({ personId: "person-viewer" }) },
+    { name: "saveTaxonomy", method: "POST", write: true, data: (role: string) => ({ kind: "tag", name: `Created-${role}`, color: "#123456" }) },
+    { name: "deleteTaxonomy", method: "POST", write: true, data: (role: string) => ({ kind: "tag", id: `delete-${role}` }) },
+    { name: "mergeTags", method: "POST", write: true, data: (role: string) => ({ sourceId: `source-${role}`, targetId: `target-${role}` }) },
+    { name: "changeMembership", method: "POST", write: true, data: (role: string) => ({ personIds: ["person-viewer"], kind: "group", targetId: `group-${role}` }) },
+    { name: "changePeopleStatus", method: "POST", write: true, data: (_role: string) => ({ personIds: ["person-viewer"], status: "alumni" }) },
+  ]
+  for (const endpoint of taxonomyCalls) {
+    for (const role of ["admin", "editor", "viewer"]) {
+      it(`${role} permission for ${endpoint.name}`, async () => {
+        expect((await call(endpoint.name, role, endpoint.data(role), endpoint.method)).status).toBe(endpoint.write && role === "viewer" ? 403 : 200)
+      })
+    }
+    it(`anonymous cannot call ${endpoint.name}`, async () => {
+      expect((await call(endpoint.name, undefined, endpoint.data("viewer"), endpoint.method)).status).toBe(401)
+    })
+  }
+  it("keeps a person in multiple groups and audits only membership changes", async () => {
+    const memberships = await database.prepare("SELECT group_id FROM people_groups WHERE person_id='person-viewer' ORDER BY group_id").all<{ group_id: string }>()
+    expect(memberships.results.map((row) => row.group_id)).toEqual(["group-admin", "group-editor"])
+    const data = { personIds: ["person-viewer"], kind: "group", targetId: "group-admin" }
+    expect((await call("changeMembership", "editor", data, "POST")).status).toBe(200)
+    const logs = await database.prepare("SELECT count(*) AS n FROM activity_log WHERE entity_id='person-viewer' AND action='group_added'").first<{ n: number }>()
+    expect(logs?.n).toBe(2)
+    expect((await call("deleteTaxonomy", "admin", { kind: "group", id: "group-admin" }, "POST")).status).toBe(409)
+    expect((await call("deleteTaxonomy", "admin", { kind: "group", id: "group-admin", removeMembers: true }, "POST")).status).toBe(200)
+  })
+  it("merges overlapping tags without losing members or leaving orphans", async () => {
+    await database.batch([
+      database.prepare("INSERT INTO people_tags(person_id,tag_id) VALUES ('person-viewer','source-viewer'),('person-viewer','target-viewer'),('person-admin','source-viewer')"),
+    ])
+    expect((await call("mergeTags", "editor", { sourceId: "source-viewer", targetId: "target-viewer" }, "POST")).status).toBe(200)
+    const members = await database.prepare("SELECT person_id FROM people_tags WHERE tag_id='target-viewer' ORDER BY person_id").all<{ person_id: string }>()
+    expect(members.results.map((row) => row.person_id)).toEqual(["person-admin", "person-viewer"])
+    expect(await database.prepare("SELECT id FROM tags WHERE id='source-viewer'").first()).toBeNull()
+    expect((await database.prepare("PRAGMA foreign_key_check").all()).results).toEqual([])
+  })
+  it("deduplicates lowercase tags and excludes deleted people from membership reads", async () => {
+    expect((await call("saveTaxonomy", "editor", { kind: "tag", name: "TARGET-VIEWER", color: "#123456" }, "POST")).status).toBe(200)
+    expect((await database.prepare("SELECT count(*) AS n FROM tags WHERE name='target-viewer'").first<{ n: number }>())?.n).toBe(1)
+    expect((await call("getMemberships", "viewer", { personId: "person-admin" })).status).toBe(404)
+    expect((await call("changeMembership", "admin", { personIds: ["person-admin"], kind: "tag", targetId: "target-viewer" }, "POST")).status).toBe(404)
   })
   it.each(["sign-up/email", "admin/create-user", "admin/set-role", "admin/ban-user"])("rejects direct %s", async (path) => {
     const response = await worker.dispatchFetch(`http://localhost/api/auth/${path}`, {
