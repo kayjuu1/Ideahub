@@ -60,3 +60,10 @@ Complete phases 0–10 in order. Every phase requires passing typecheck, its acc
 - Notes and timelines paginate at 50 entries, newest first with an ID tie-breaker. Editing and deleting notes never copies note contents into audit metadata.
 - Markdown-lite renders React text nodes, emphasis, safe HTTP(S) links, and bullet lines. Raw HTML and script/data links remain inert text.
 - Note edits update the query cache optimistically and roll back on failure. Deletions wait for server confirmation. Only the author or an admin can change a note, checked server-side after the shared role middleware.
+
+## Phase 6
+
+- Binary formats use file-type signature detection; CSV must be UTF-8 comma-separated text without binary control characters. Legacy DOC additionally requires a WordDocument stream marker if detected as a generic CFB container.
+- Object names are sanitized ASCII and downloads force attachment disposition. The bucket has no public access path. Attachment listings omit internal R2 keys.
+- R2/D1 cannot share a transaction. Failed upload commits compensate by deleting the object, with explicit cleanup alerts if compensation fails. Deletion keeps its database retry handle until R2 succeeds, then atomically removes the row and adds audit history. README documents operator recovery.
+- Cloudflare R2 is currently disabled (API 10042). The phase's functional acceptance uses Miniflare R2; live provisioning and deployment remain blocked until the owner enables R2 in the dashboard.

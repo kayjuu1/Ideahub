@@ -12,6 +12,7 @@ import { PersonForm } from "../../features/people/person-form"
 import { PersonMemberships } from "../../features/taxonomy/person-memberships"
 import { PersonNotes } from "../../features/notes/person-notes"
 import { PersonTimeline } from "../../features/notes/person-timeline"
+import { PersonAttachments } from "../../features/attachments/person-attachments"
 
 export const Route = createFileRoute("/people/$personId")({ beforeLoad: loadIdentity, component: PersonPage })
 function PersonPage() {
@@ -25,6 +26,7 @@ function PersonPage() {
       <section className="max-w-3xl rounded-lg border bg-card p-6"><h2 className="mb-5 font-semibold">Profile</h2>{editing ? <PersonForm initial={{ name: person.name, email: person.email ?? "", phone: person.phone ?? "", organization: person.organization ?? "", rolePosition: person.rolePosition ?? "", status: person.status, notesSummary: person.notesSummary ?? "" }} onCancel={() => setEditing(false)} onSave={async (data) => { await updatePerson({ data: { ...data, id: personId } }); await cache.invalidateQueries({ queryKey: ["person", personId] }); await cache.invalidateQueries({ queryKey: ["people"] }); await cache.invalidateQueries({ queryKey: ["timeline", personId] }); setEditing(false); toast.success("Profile updated") }} /> : <dl className="grid gap-6 sm:grid-cols-2">{([ ["Email", person.email], ["Phone", person.phone], ["Organization", person.organization], ["Role / position", person.rolePosition], ["Summary", person.notesSummary] ] as const).map(([label, value]) => <div key={label}><dt className="mb-1 text-xs font-medium text-muted-foreground">{label}</dt><dd className="whitespace-pre-wrap text-sm">{value || "—"}</dd></div>)}</dl>}</section>
       <PersonMemberships personId={personId} editable={user.role !== "viewer"} />
       <PersonNotes personId={personId} user={user} />
+      <PersonAttachments personId={personId} editable={user.role !== "viewer"} />
       <PersonTimeline personId={personId} />
     </>}
   </Workspace>

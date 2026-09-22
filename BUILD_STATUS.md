@@ -86,3 +86,16 @@ bun run test: Test Files 5 passed; Tests 120 passed
 ```
 
 Tests prove each role's access to every notes/timeline function, editors' inability to modify another author's notes, admin override, deleted-note exclusion, and newest-first creation/diff/group/note activity. Rendering tests verify HTML escaping and inert unsafe URLs. Reviewed database calls remain downstream of authenticated functions.
+
+## Phase 6 — functional acceptance passed locally; live R2 pending
+
+Added private attachment upload, metadata listing, streamed download, confirmed deletion, content-signature validation, and partial-failure compensation/retry handling. Server middleware denies viewer upload/download/delete, and all operations verify the parent person remains visible. Audit events share each database mutation batch. Documented storage recovery procedures and the outstanding Cloudflare account prerequisite.
+
+```text
+bun run typecheck: Tasks: 2 successful, 2 total
+bun run build: Tasks: 1 successful, 1 total
+bun run test: Test Files 6 passed; Tests 143 passed
+wrangler r2 bucket list: API error 10042 — enable R2 through the Cloudflare Dashboard
+```
+
+Miniflare tests exercise upload/list/download/delete, byte-for-byte download, R2 object removal, role/anonymous coverage for all four functions, oversize/disallowed/mismatched files, compensation after insert failure, and retry after delete failure. No live R2 bucket is claimed or configured. Live R2 is a deployment prerequisite; phase 6's stated functional checks pass against the local binding.

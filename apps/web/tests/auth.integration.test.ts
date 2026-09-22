@@ -24,7 +24,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
         functions.set(match[2], match[1])
       }
     }
-    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote"].sort())
+    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment"].sort())
     worker = new Miniflare(convertV4MiniflareOptions({
       modules: [
         { type: "ESModule", path: resolve("dist/server/index.js") },
@@ -67,6 +67,9 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     }
     for (const role of ["admin", "editor", "viewer"]) {
       await database.prepare("INSERT INTO notes(id,person_id,author_id,content,created_at,updated_at) VALUES (?,'person-viewer',?,'Fixture note',1,1)").bind(`note-${role}`, role).run()
+      const key = `people/person-viewer/attachment-${role}/fixture.pdf`
+      await (await worker.getR2Bucket("ATTACHMENTS")).put(key, "%PDF-1.7\nfixture")
+      await database.prepare("INSERT INTO attachments(id,person_id,uploaded_by,filename,content_type,size_bytes,r2_key,created_at) VALUES (?,'person-viewer',?,'fixture.pdf','application/pdf',16,?,1)").bind(`attachment-${role}`, role, key).run()
     }
   }, 60_000)
 
@@ -75,11 +78,14 @@ describe("authentication boundary (compiled Worker + D1)", () => {
   async function call(name: string, role?: string, data?: unknown, method = "GET") {
     const id = functions.get(name)
     if (!id) throw new Error(`Missing compiled function: ${name}`)
-    const payload = JSON.stringify(toJSON({ data }))
+    const multipart = data instanceof FormData
+    const payload = multipart ? "" : JSON.stringify(toJSON({ data }))
+    const formRequest = multipart ? new Request("http://localhost", { method: "POST", body: data }) : undefined
+    const body = formRequest ? new Uint8Array(await formRequest.arrayBuffer()) : payload
     return worker.dispatchFetch(`http://localhost/_serverFn/${id}${method === "GET" ? `?payload=${encodeURIComponent(payload)}` : ""}`, {
       method,
-      body: method === "POST" ? payload : undefined,
-      headers: { "Content-Type": "application/json", Cookie: role ? cookies.get(role) ?? "" : "", "x-tsr-serverFn": "true", Origin: "http://localhost", "Sec-Fetch-Site": "same-origin" },
+      body: method === "POST" ? body : undefined,
+      headers: { "Content-Type": formRequest?.headers.get("Content-Type") ?? "application/json", Cookie: role ? cookies.get(role) ?? "" : "", "x-tsr-serverFn": "true", Origin: "http://localhost", "Sec-Fetch-Site": "same-origin" },
     })
   }
 
@@ -215,6 +221,65 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     expect(body).toContain("changes")
     const events = await database.prepare("SELECT action FROM activity_log WHERE entity_id=? OR json_extract(metadata,'$.personId')=? ORDER BY created_at DESC,id DESC").bind(personId, personId).all<{ action: string }>()
     expect(events.results.map((row) => row.action)).toEqual(["added", "group_added", "updated", "created"])
+  })
+  function uploadData(filename = "upload.pdf", content = "%PDF-1.7\nattachment\n%%EOF") {
+    const data = new FormData()
+    data.set("personId", "person-viewer")
+    data.set("file", new File([content], filename))
+    return data
+  }
+  for (const name of ["listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment"]) {
+    const method = ["uploadAttachment", "deleteAttachment"].includes(name) ? "POST" : "GET"
+    for (const role of ["admin", "editor", "viewer"]) {
+      it(`${role} permission for ${name}`, async () => {
+        const data = name === "uploadAttachment" ? uploadData() : { personId: "person-viewer", id: `attachment-${role}` }
+        expect((await call(name, role, data, method)).status).toBe(role === "viewer" && name !== "listAttachments" ? 403 : 200)
+      })
+    }
+    it(`anonymous cannot call ${name}`, async () => {
+      expect((await call(name, undefined, name === "uploadAttachment" ? uploadData() : { personId: "person-viewer", id: "attachment-viewer" }, method)).status).toBe(401)
+    })
+  }
+  it("uploads, lists, streams and deletes an attachment and its R2 object", async () => {
+    const content = "%PDF-1.7\nround trip\n%%EOF"
+    expect((await call("uploadAttachment", "editor", uploadData("roundtrip.pdf", content), "POST")).status).toBe(200)
+    const file = await database.prepare("SELECT id,r2_key FROM attachments WHERE filename='roundtrip.pdf'").first<{ id: string; r2_key: string }>()
+    expect(file).not.toBeNull()
+    const key = { personId: "person-viewer", id: file!.id }
+    const response = await call("downloadAttachment", "editor", key)
+    expect(response.headers.get("Content-Disposition")).toContain("attachment")
+    expect(response.headers.get("Cache-Control")).toContain("no-store")
+    expect(await response.text()).toBe(content)
+    expect(await (await call("listAttachments", "viewer", { personId: "person-viewer" })).text()).toContain("roundtrip.pdf")
+    expect((await call("downloadAttachment", "admin", { ...key, personId: "person-admin" })).status).toBe(404)
+    expect((await call("deleteAttachment", "editor", key, "POST")).status).toBe(200)
+    expect(await (await worker.getR2Bucket("ATTACHMENTS")).get(file!.r2_key)).toBeNull()
+    expect(await database.prepare("SELECT id FROM attachments WHERE id=?").bind(file!.id).first()).toBeNull()
+  })
+  it("rejects invalid files clearly and compensates R2 after a D1 failure", async () => {
+    const invalid = await call("uploadAttachment", "editor", uploadData("fake.png", "MZ not an image"), "POST")
+    expect(invalid.status).toBe(415)
+    expect(await invalid.text()).toContain("extension")
+    expect((await call("uploadAttachment", "editor", uploadData("script.exe"), "POST")).status).toBe(415)
+    const oversized = uploadData()
+    oversized.set("file", new File([new Uint8Array(10 * 1024 * 1024 + 1)], "large.pdf"))
+    const large = await call("uploadAttachment", "admin", oversized, "POST")
+    expect(large.status).toBe(413)
+    expect(await large.text()).toContain("10 MB")
+    const bucket = await worker.getR2Bucket("ATTACHMENTS"), before = (await bucket.list()).objects.length
+    await database.prepare("CREATE TRIGGER fail_attachment_test BEFORE INSERT ON attachments BEGIN SELECT RAISE(ABORT, 'test rollback'); END").run()
+    try { expect((await call("uploadAttachment", "admin", uploadData("rollback.pdf"), "POST")).status).toBe(503) }
+    finally { await database.prepare("DROP TRIGGER fail_attachment_test").run() }
+    expect((await bucket.list()).objects.length).toBe(before)
+  })
+  it("retains a retry handle when the row cannot be deleted after R2 succeeds", async () => {
+    const data = { personId: "person-viewer", id: "attachment-viewer" }
+    await database.prepare("CREATE TRIGGER fail_attachment_delete BEFORE DELETE ON attachments BEGIN SELECT RAISE(ABORT, 'test rollback'); END").run()
+    try { expect((await call("deleteAttachment", "admin", data, "POST")).status).toBe(503) }
+    finally { await database.prepare("DROP TRIGGER fail_attachment_delete").run() }
+    expect(await database.prepare("SELECT id FROM attachments WHERE id='attachment-viewer'").first()).not.toBeNull()
+    expect((await call("deleteAttachment", "admin", data, "POST")).status).toBe(200)
+    expect(await database.prepare("SELECT id FROM attachments WHERE id='attachment-viewer'").first()).toBeNull()
   })
   it.each(["sign-up/email", "admin/create-user", "admin/set-role", "admin/ban-user"])("rejects direct %s", async (path) => {
     const response = await worker.dispatchFetch(`http://localhost/api/auth/${path}`, {

@@ -58,3 +58,13 @@ bun run seed:admin --name Ideahub-Admin --email admin@ideagap.org
 ```
 
 The seed script refuses to run when an admin already exists. Its generated-password mode is intended for bootstrap followed by password reset, not immediate interactive login.
+
+## Attachment operations
+
+R2 stays private. Files pass through authenticated server functions; viewers can see metadata but cannot download. Upload validation checks the extension and detected binary type (UTF-8 comma-separated text for CSV), up to 10 MB. Downloads force attachment disposition and disable caching.
+
+Cloudflare currently reports R2 is not enabled for this account (API error 10042). Enable R2 in the dashboard before provisioning the staging bucket. Local Miniflare R2 is available and tested.
+
+Deletion retains the database row until R2 succeeds. If the database write then fails, the UI reports a retryable deletion; retrying safely clears the retained row and writes its audit event. Failed upload database writes trigger compensating R2 deletion. If that cleanup also fails, the structured `attachment_orphan_cleanup_required` Worker log includes the exact object key. Operators must verify no attachment row references that key, then delete that object with Wrangler. Monitor this event and `attachment_row_cleanup_required`; never clear these alerts without verifying cleanup.
+
+Implementation references: [TanStack server functions](https://tanstack.com/start/latest/docs/framework/react/guide/server-functions), [R2 Workers API](https://developers.cloudflare.com/r2/api/workers/workers-api-reference/), and [file-type](https://github.com/sindresorhus/file-type).
