@@ -24,7 +24,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
         functions.set(match[2], match[1])
       }
     }
-    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus"].sort())
+    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote"].sort())
     worker = new Miniflare(convertV4MiniflareOptions({
       modules: [
         { type: "ESModule", path: resolve("dist/server/index.js") },
@@ -64,6 +64,9 @@ describe("authentication boundary (compiled Worker + D1)", () => {
       for (const prefix of ["source", "target", "delete"]) {
         await database.prepare("INSERT INTO tags(id,name,color,created_at) VALUES (?,?,'#123456',1)").bind(`${prefix}-${role}`, `${prefix}-${role}`).run()
       }
+    }
+    for (const role of ["admin", "editor", "viewer"]) {
+      await database.prepare("INSERT INTO notes(id,person_id,author_id,content,created_at,updated_at) VALUES (?,'person-viewer',?,'Fixture note',1,1)").bind(`note-${role}`, role).run()
     }
   }, 60_000)
 
@@ -174,6 +177,44 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     expect((await database.prepare("SELECT count(*) AS n FROM tags WHERE name='target-viewer'").first<{ n: number }>())?.n).toBe(1)
     expect((await call("getMemberships", "viewer", { personId: "person-admin" })).status).toBe(404)
     expect((await call("changeMembership", "admin", { personIds: ["person-admin"], kind: "tag", targetId: "target-viewer" }, "POST")).status).toBe(404)
+  })
+  const noteCalls = [
+    { name: "listNotes", write: false }, { name: "getTimeline", write: false },
+    { name: "createNote", write: true }, { name: "updateNote", write: true }, { name: "deleteNote", write: true },
+  ]
+  for (const endpoint of noteCalls) {
+    for (const role of ["admin", "editor", "viewer"]) {
+      it(`${role} permission for ${endpoint.name}`, async () => {
+        expect((await call(endpoint.name, role, { personId: "person-viewer", id: `note-${role}`, content: "New **note**" }, endpoint.write ? "POST" : "GET")).status).toBe(endpoint.write && role === "viewer" ? 403 : 200)
+      })
+    }
+    it(`anonymous cannot call ${endpoint.name}`, async () => {
+      expect((await call(endpoint.name, undefined, { personId: "person-viewer", id: "note-viewer", content: "Blocked" }, endpoint.write ? "POST" : "GET")).status).toBe(401)
+    })
+  }
+  it("editors cannot change another author's notes; admins can", async () => {
+    const data = { personId: "person-viewer", id: "note-viewer", content: "Admin correction" }
+    for (const endpoint of ["updateNote", "deleteNote"]) expect((await call(endpoint, "editor", data, "POST")).status).toBe(403)
+    expect((await call("updateNote", "admin", data, "POST")).status).toBe(200)
+    expect((await call("deleteNote", "admin", data, "POST")).status).toBe(200)
+    expect(await (await call("listNotes", "viewer", { personId: "person-viewer" })).text()).not.toContain("Admin correction")
+    expect((await call("listNotes", "viewer", { personId: "person-admin" })).status).toBe(404)
+  })
+  it("timeline contains creation, field diffs, membership and note events newest first", async () => {
+    expect((await call("createPerson", "editor", { ...profile, name: "Timeline contact" }, "POST")).status).toBe(200)
+    const person = await database.prepare("SELECT id FROM people WHERE name='Timeline contact'").first<{ id: string }>()
+    expect(person).not.toBeNull()
+    const personId = person!.id
+    expect((await call("updatePerson", "editor", { ...profile, name: "Timeline contact", status: "active", id: personId }, "POST")).status).toBe(200)
+    expect((await call("changeMembership", "editor", { personIds: [personId], kind: "group", targetId: "group-editor" }, "POST")).status).toBe(200)
+    expect((await call("createNote", "editor", { personId, content: "Timeline note" }, "POST")).status).toBe(200)
+    const response = await call("getTimeline", "viewer", { personId })
+    expect(response.status).toBe(200)
+    const body = await response.text()
+    expect(body).toContain("group_added")
+    expect(body).toContain("changes")
+    const events = await database.prepare("SELECT action FROM activity_log WHERE entity_id=? OR json_extract(metadata,'$.personId')=? ORDER BY created_at DESC,id DESC").bind(personId, personId).all<{ action: string }>()
+    expect(events.results.map((row) => row.action)).toEqual(["added", "group_added", "updated", "created"])
   })
   it.each(["sign-up/email", "admin/create-user", "admin/set-role", "admin/ban-user"])("rejects direct %s", async (path) => {
     const response = await worker.dispatchFetch(`http://localhost/api/auth/${path}`, {

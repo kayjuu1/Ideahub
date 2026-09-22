@@ -54,3 +54,9 @@ Complete phases 0–10 in order. Every phase requires passing typecheck, its acc
 - Group/tag counts include visible people only. Group deletion still requires explicit removal of all stored memberships, including soft-deleted people, to protect retained relationship history.
 - Bulk mutations accept at most 100 people and execute all changes and associated audit inserts in one atomic D1 batch. Duplicate memberships produce no extra audit events.
 - Tag merges preserve source memberships, deduplicate overlaps, and remove the source tag in the same batch; soft-deleted people's relationships are preserved.
+
+## Phase 5
+
+- Notes and timelines paginate at 50 entries, newest first with an ID tie-breaker. Editing and deleting notes never copies note contents into audit metadata.
+- Markdown-lite renders React text nodes, emphasis, safe HTTP(S) links, and bullet lines. Raw HTML and script/data links remain inert text.
+- Note edits update the query cache optimistically and roll back on failure. Deletions wait for server confirmation. Only the author or an admin can change a note, checked server-side after the shared role middleware.

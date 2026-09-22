@@ -74,3 +74,15 @@ bun run test: Test Files 4 passed; Tests 96 passed
 ```
 
 Compiled Worker tests cover every new function for admin/editor/viewer/anonymous, multiple groups per person, duplicate membership audit suppression, nonempty-group deletion protection, lowercase tag deduplication, overlapping tag merge, and PRAGMA foreign_key_check with no violations. Database access remains behind protectedFn; bootstrap and Better Auth internals are the documented exceptions.
+
+## Phase 5 — passed
+
+Added notes with author identity, safe Markdown-lite rendering, optimistic edits, confirmed soft deletion, and paginated person timelines showing field diffs and relationship events. All five endpoints use protectedFn, with additional author-or-admin enforcement for note changes. Profile and note updates refresh the displayed timeline.
+
+```text
+bun run typecheck: Tasks: 2 successful, 2 total
+bun run build: Tasks: 1 successful, 1 total
+bun run test: Test Files 5 passed; Tests 120 passed
+```
+
+Tests prove each role's access to every notes/timeline function, editors' inability to modify another author's notes, admin override, deleted-note exclusion, and newest-first creation/diff/group/note activity. Rendering tests verify HTML escaping and inert unsafe URLs. Reviewed database calls remain downstream of authenticated functions.
