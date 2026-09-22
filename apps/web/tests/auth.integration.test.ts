@@ -4,7 +4,8 @@ import { resolve } from "node:path"
 import { Miniflare, convertV4MiniflareOptions } from "miniflare"
 import { hashPassword } from "better-auth/crypto"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { toJSON } from "seroval"
+import { fromCrossJSON, toJSON } from "seroval"
+import { z } from "zod"
 
 // Exercise the compiled Worker, real Better Auth cookies, and the complete
 // server-function middleware chain against isolated Miniflare D1.
@@ -24,7 +25,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
         functions.set(match[2], match[1])
       }
     }
-    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment"].sort())
+    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment", "getDashboard"].sort())
     worker = new Miniflare(convertV4MiniflareOptions({
       modules: [
         { type: "ESModule", path: resolve("dist/server/index.js") },
@@ -280,6 +281,28 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     expect(await database.prepare("SELECT id FROM attachments WHERE id='attachment-viewer'").first()).not.toBeNull()
     expect((await call("deleteAttachment", "admin", data, "POST")).status).toBe(200)
     expect(await database.prepare("SELECT id FROM attachments WHERE id='attachment-viewer'").first()).toBeNull()
+  })
+  for (const role of ["admin", "editor", "viewer"]) {
+    it(`${role} can call getDashboard`, async () => { expect((await call("getDashboard", role)).status).toBe(200) })
+  }
+  it("anonymous cannot call getDashboard", async () => { expect((await call("getDashboard")).status).toBe(401) })
+  it("dashboard matches direct SQL and every feed link resolves", async () => {
+    const response = await call("getDashboard", "viewer")
+    const transport = await response.json() as Parameters<typeof fromCrossJSON>[0]
+    const decoded: unknown = fromCrossJSON(transport, { refs: new Map() })
+    const result = z.object({ result: z.object({ counts: z.object({ total: z.number(), active: z.number(), paused: z.number(), alumni: z.number(), organizations: z.number() }), groups: z.array(z.object({ id: z.string(), count: z.number() })), activity: z.array(z.object({ href: z.string(), entityType: z.string() })) }) }).parse(decoded).result
+    const totals = await database.prepare("SELECT count(*) AS total, coalesce(sum(status='active'),0) AS active, coalesce(sum(status='paused'),0) AS paused, coalesce(sum(status='alumni'),0) AS alumni, count(distinct nullif(lower(trim(organization)),'')) AS organizations FROM people WHERE deleted_at IS NULL").first()
+    expect(result.counts).toEqual(totals)
+    for (const group of result.groups) {
+      const count = await database.prepare("SELECT count(*) AS n FROM people_groups pg JOIN people p ON p.id=pg.person_id WHERE pg.group_id=? AND p.deleted_at IS NULL").bind(group.id).first<{ n: number }>()
+      expect(group.count).toBe(count?.n)
+    }
+    expect(result.activity).toHaveLength(10)
+    for (const event of result.activity) {
+      expect(["vault", "user"]).not.toContain(event.entityType)
+      const page = await worker.dispatchFetch(`http://localhost${event.href}`, { headers: { Cookie: cookies.get("viewer") ?? "" } })
+      expect(page.status).toBe(200)
+    }
   })
   it.each(["sign-up/email", "admin/create-user", "admin/set-role", "admin/ban-user"])("rejects direct %s", async (path) => {
     const response = await worker.dispatchFetch(`http://localhost/api/auth/${path}`, {

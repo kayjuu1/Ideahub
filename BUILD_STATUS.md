@@ -99,3 +99,15 @@ wrangler r2 bucket list: API error 10042 — enable R2 through the Cloudflare Da
 ```
 
 Miniflare tests exercise upload/list/download/delete, byte-for-byte download, R2 object removal, role/anonymous coverage for all four functions, oversize/disallowed/mismatched files, compensation after insert failure, and retry after delete failure. No live R2 bucket is claimed or configured. Live R2 is a deployment prerequisite; phase 6's stated functional checks pass against the local binding.
+
+## Phase 7 — passed
+
+Replaced the welcome placeholder with live people/status/organization cards, group counts, and the ten most recent permitted activity events with actor names, record links, and relative timestamps. Deleted records link to their collection pages. Dashboard data uses protectedFn and excludes sensitive vault/user-administration events from the shared feed.
+
+```text
+bun run typecheck: Tasks: 2 successful, 2 total
+bun run build: Tasks: 1 successful, 1 total
+bun run test: Test Files 6 passed; Tests 148 passed
+```
+
+Tests cover all roles and anonymous denial, deserialize actual Worker output and compare every summary/group count with direct D1 SQL, and request every feed link with a viewer session (HTTP 200).

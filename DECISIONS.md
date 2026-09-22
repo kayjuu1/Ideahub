@@ -67,3 +67,9 @@ Complete phases 0–10 in order. Every phase requires passing typecheck, its acc
 - Object names are sanitized ASCII and downloads force attachment disposition. The bucket has no public access path. Attachment listings omit internal R2 keys.
 - R2/D1 cannot share a transaction. Failed upload commits compensate by deleting the object, with explicit cleanup alerts if compensation fails. Deletion keeps its database retry handle until R2 succeeds, then atomically removes the row and adds audit history. README documents operator recovery.
 - Cloudflare R2 is currently disabled (API 10042). The phase's functional acceptance uses Miniflare R2; live provisioning and deployment remain blocked until the owner enables R2 in the dashboard.
+
+## Phase 7
+
+- Organization counts normalize case/whitespace and ignore blank values. All summary and group counts exclude soft-deleted people.
+- Shared dashboard activity includes people, groups, tags, notes, and attachments only. Vault and user administration history belong to their dedicated authorized panels.
+- Events for deleted records link to their collection page; existing people and groups link directly to details so feed navigation never depends on a deleted record.
