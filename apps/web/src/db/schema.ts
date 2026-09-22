@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm"
 import { blob, check, index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core"
-import { user } from "./auth-schema"
+import { session, user } from "./auth-schema"
 
 const timestamp = (name: string) => integer(name, { mode: "timestamp_ms" })
 const createdAt = () => timestamp("created_at").notNull()
@@ -73,3 +73,14 @@ export const vaultAccessLog = sqliteTable("vault_access_log", {
   action: text("action", { enum: ["reveal", "copy", "create", "update", "delete"] }).notNull(),
   ipAddress: text("ip_address"), userAgent: text("user_agent"), createdAt: createdAt(),
 }, (table) => [index("vault_access_created_idx").on(table.createdAt), check("vault_access_action_check", sql`${table.action} IN ('reveal','copy','create','update','delete')`)])
+
+export const vaultReauth = sqliteTable("vault_reauth", {
+  sessionId: text("session_id").primaryKey().references(() => session.id, { onDelete: "cascade" }),
+  verifiedAt: timestamp("verified_at").notNull(),
+})
+
+// Operational sliding-window counters, not audit history. Old counters may be
+// pruned; every accepted attempt is inserted with an atomic conditional query.
+export const requestLimits = sqliteTable("request_limits", {
+  id: text("id").primaryKey(), actorId: actor("actor_id"), scope: text("scope").notNull(), createdAt: createdAt(),
+}, (table) => [index("request_limits_scope_actor_time_idx").on(table.scope, table.actorId, table.createdAt)])

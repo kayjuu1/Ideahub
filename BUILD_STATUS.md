@@ -131,3 +131,16 @@ Tests cover all five admin functions for every role/anonymous, self-demotion/ban
 ## Phase 8 acceptance amendment — owner requested local completion
 
 The owner now owns live Cloudflare email and production setup, and requested terminal email simulation. The development-only loopback branch prints the simulated message and setup link directly in the local terminal; the production bundle omits it. A local reset request returned HTTP 200 and emitted `[LOCAL EMAIL — NOT SENT]`. Typecheck passed (2/2 tasks) and build passed (1/1 task). The previous live-email gate is superseded by this explicit scope update; local acceptance authorizes continuing to phase 9.
+
+## Phase 9 — passed locally
+
+Implemented the encrypted vault with temporary in-memory development keys, production Worker-secret keys, metadata-only browsing, password confirmation, single-entry reveal/copy, timed hiding, admin editing/deletion, append-only access history, and restartable master-key rewrapping. All eight vault functions use shared authorization; page requests also deny viewers. Atomic D1 counters enforce per-user reveal/password limits, and reveal fails closed when audit persistence fails. Deletion erases encrypted material while preserving audit references.
+
+```text
+bun run typecheck: Tasks: 2 successful, 2 total
+bun run build: Tasks: 1 successful, 1 total
+bun run test: Test Files 7 passed; Tests 213 passed
+bun run db:migrate:local: No migrations to apply (0004 already applied)
+```
+
+Tests cover every role and anonymous access for all vault functions, Unicode round trips, ciphertext confidentiality, envelope tampering, fresh password confirmation, simultaneous reveal limits, audit-write failure, tombstone erasure, viewer HTTP 403 on vault paths, and rotation preserving ciphertext. Reviewed all vault `db.` calls: they receive their database from protected function context. No remote work was performed.

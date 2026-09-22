@@ -15,6 +15,7 @@ export function Workspace({ children, name, role }: { children: ReactNode; name:
       <span className="ml-auto text-sm text-muted-foreground">{name}</span>
       <Link to="/groups" className="text-sm" activeProps={{ className: "font-semibold text-primary" }}>Groups</Link>
       <Link to="/tags" className="text-sm" activeProps={{ className: "font-semibold text-primary" }}>Tags</Link>
+      {role && role !== "viewer" && <Link to="/vault" className="text-sm" activeProps={{ className: "font-semibold text-primary" }}>Vault</Link>}
       {role === "admin" && <Link to="/admin/users" className="text-sm" activeProps={{ className: "font-semibold text-primary" }}>Users</Link>}
       <PeopleSearch />
       <Button size="sm" variant="ghost" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>Theme</Button>

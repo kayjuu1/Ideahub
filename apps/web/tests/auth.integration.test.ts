@@ -16,6 +16,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
   const cookies = new Map<string, string>()
   const functions = new Map<string, string>()
   const password = randomBytes(24).toString("base64url")
+  const initialVaultKey = randomBytes(32).toString("base64")
 
   beforeAll(async () => {
     const assets = resolve("dist/server/assets")
@@ -26,7 +27,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
         functions.set(match[2], match[1])
       }
     }
-    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment", "getDashboard", "listManagedUsers", "createManagedUser", "changeManagedRole", "setManagedBan", "resetManagedPassword"].sort())
+    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment", "getDashboard", "listManagedUsers", "createManagedUser", "changeManagedRole", "setManagedBan", "resetManagedPassword", "listVault", "createVaultEntry", "updateVaultEntry", "deleteVaultEntry", "revealVaultSecret", "reauthenticateVault", "listVaultAccess", "rewrapVaultKeys"].sort())
     workerOptions = {
       modules: [
         { type: "ESModule", path: resolve("dist/server/index.js") },
@@ -38,7 +39,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
       d1Databases: ["DB"],
       r2Buckets: ["ATTACHMENTS"],
       email: { send_email: [{ name: "EMAIL", allowed_sender_addresses: ["noreply@ideagap.org"], allowed_destination_addresses: ["invited@example.test", "target@example.test"] }] },
-      bindings: { BETTER_AUTH_SECRET: randomBytes(48).toString("base64url"), BETTER_AUTH_URL: "http://localhost" },
+      bindings: { BETTER_AUTH_SECRET: randomBytes(48).toString("base64url"), BETTER_AUTH_URL: "http://localhost", VAULT_MASTER_KEY: initialVaultKey },
     }
     worker = new Miniflare(convertV4MiniflareOptions(workerOptions))
     database = await worker.getD1Database("DB")
@@ -375,6 +376,80 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     expect(missing.status).toBe(200)
     expect(await existing.json()).toEqual(await missing.json())
     } finally { await worker.setOptions(convertV4MiniflareOptions(workerOptions)); database = await worker.getD1Database("DB") }
+  })
+  const vaultProfile = { label: "Vault fixture", username: "test", category: "testing", url: "https://example.test", secret: "Never logged fixture secret" }
+  let vaultId = "", deleteVaultId = ""
+  it("creates encrypted fixtures with atomic audit records", async () => {
+    for (const label of ["Vault fixture", "Delete fixture"]) {
+      expect((await call("createVaultEntry", "admin", { ...vaultProfile, label }, "POST")).status).toBe(200)
+      const row = await database.prepare("SELECT id,hex(ciphertext) AS ciphertext,length(wrapped_dek) AS wrapped FROM vault_entries WHERE label=?").bind(label).first<{ id: string; ciphertext: string; wrapped: number }>()
+      expect(row?.wrapped).toBe(60)
+      expect(row?.ciphertext).not.toContain(Buffer.from(vaultProfile.secret).toString("hex").toUpperCase())
+      if (label === "Vault fixture") vaultId = row!.id; else deleteVaultId = row!.id
+      expect((await database.prepare("SELECT count(*) AS n FROM vault_access_log WHERE entry_id=? AND action='create'").bind(row!.id).first<{ n: number }>())?.n).toBe(1)
+    }
+  })
+  for (const name of ["listVault", "createVaultEntry", "updateVaultEntry", "deleteVaultEntry", "revealVaultSecret", "reauthenticateVault", "listVaultAccess", "rewrapVaultKeys"]) {
+    for (const role of ["admin", "editor", "viewer", "anonymous"]) {
+      it(`${role} permission for ${name}`, async () => {
+        const method = ["listVault", "listVaultAccess"].includes(name) ? "GET" : "POST"
+        const data = name === "reauthenticateVault" ? { password } : name === "listVaultAccess" ? { page: 0 } : name === "createVaultEntry" ? { ...vaultProfile, label: "Matrix entry" } : { ...vaultProfile, id: name === "deleteVaultEntry" ? deleteVaultId : vaultId }
+        const expected = role === "anonymous" ? 401 : role === "viewer" || role === "editor" && !["listVault", "revealVaultSecret", "reauthenticateVault"].includes(name) ? 403 : 200
+        const response = await call(name, role === "anonymous" ? undefined : role, data, method)
+        expect(response.status).toBe(expected)
+        if (name === "revealVaultSecret" && expected === 200) { expect(await response.text()).toBe(vaultProfile.secret); expect(response.headers.get("Cache-Control")).toContain("no-store") }
+      })
+    }
+  }
+  it("blocks every vault page for viewers and anonymous requests", async () => {
+    for (const path of ["/vault", "/vault/anything"]) {
+      expect((await worker.dispatchFetch(`http://localhost${path}`, { headers: { Cookie: cookies.get("viewer")! } })).status).toBe(403)
+      expect((await worker.dispatchFetch(`http://localhost${path}`)).status).toBe(401)
+    }
+  })
+  it("never returns encrypted fields or plaintext in metadata, and erases deleted ciphertext", async () => {
+    const metadata = await (await call("listVault", "editor")).text()
+    for (const forbidden of [vaultProfile.secret, "ciphertext", "wrappedDek", "Delete fixture"]) expect(metadata).not.toContain(forbidden)
+    const deleted = await database.prepare("SELECT ciphertext,iv,wrapped_dek,deleted_at FROM vault_entries WHERE id=?").bind(deleteVaultId).first<{ ciphertext: unknown; iv: unknown; wrapped_dek: unknown; deleted_at: number }>()
+    expect(deleted?.ciphertext).toBeNull(); expect(deleted?.iv).toBeNull(); expect(deleted?.wrapped_dek).toBeNull(); expect(deleted?.deleted_at).toBeGreaterThan(0)
+    expect((await call("revealVaultSecret", "admin", { id: deleteVaultId }, "POST")).status).toBe(404)
+  })
+  it("requires fresh password confirmation for old sessions and rate limits password attempts", async () => {
+    await database.prepare("UPDATE session SET created_at=? WHERE user_id='editor'").bind(Date.now() - 16 * 60000).run()
+    await database.prepare("DELETE FROM vault_reauth WHERE session_id IN (SELECT id FROM session WHERE user_id='editor')").run()
+    await database.prepare("DELETE FROM request_limits WHERE actor_id='editor'").run()
+    expect((await call("revealVaultSecret", "editor", { id: vaultId }, "POST")).status).toBe(403)
+    expect((await call("reauthenticateVault", "editor", { password: "incorrect password" }, "POST")).status).toBe(403)
+    expect((await call("reauthenticateVault", "editor", { password }, "POST")).status).toBe(200)
+    expect((await call("revealVaultSecret", "editor", { id: vaultId, action: "copy" }, "POST")).status).toBe(200)
+    for (let n = 0; n < 3; n++) expect((await call("reauthenticateVault", "editor", { password: "incorrect password" }, "POST")).status).toBe(403)
+    expect((await call("reauthenticateVault", "editor", { password }, "POST")).status).toBe(429)
+  })
+  it("atomically limits concurrent reveals to ten and audits every returned value", async () => {
+    await database.prepare("DELETE FROM request_limits WHERE actor_id='admin'").run()
+    const before = (await database.prepare("SELECT count(*) AS n FROM vault_access_log WHERE actor_id='admin' AND action='reveal'").first<{ n: number }>())!.n
+    const responses = await Promise.all(Array.from({ length: 12 }, () => call("revealVaultSecret", "admin", { id: vaultId }, "POST")))
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(10)
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(2)
+    const after = (await database.prepare("SELECT count(*) AS n FROM vault_access_log WHERE actor_id='admin' AND action='reveal'").first<{ n: number }>())!.n
+    expect(after - before).toBe(10)
+    await database.prepare("DELETE FROM request_limits WHERE actor_id='admin'").run()
+  })
+  it("refuses to reveal when the audit write fails", async () => {
+    await database.prepare("CREATE TRIGGER test_audit_failure BEFORE INSERT ON vault_access_log WHEN NEW.action='reveal' BEGIN SELECT RAISE(ABORT,'fixture'); END").run()
+    try { const response = await call("revealVaultSecret", "admin", { id: vaultId }, "POST"); expect(response.status).toBe(500); expect(await response.text()).not.toContain(vaultProfile.secret) }
+    finally { await database.prepare("DROP TRIGGER test_audit_failure").run() }
+  })
+  it("rotates master keys without changing secret ciphertext", async () => {
+    const before = await database.prepare("SELECT hex(ciphertext) AS ciphertext FROM vault_entries WHERE id=?").bind(vaultId).first<{ ciphertext: string }>()
+    const oldBindings = workerOptions.bindings ?? {}
+    const rotated = { ...workerOptions, bindings: { ...oldBindings, VAULT_MASTER_KEY: randomBytes(32).toString("base64"), VAULT_KEY_VERSION: "2", VAULT_PREVIOUS_MASTER_KEYS: JSON.stringify({ "1": initialVaultKey }) } }
+    await worker.setOptions(convertV4MiniflareOptions(rotated)); database = await worker.getD1Database("DB")
+    expect((await call("rewrapVaultKeys", "admin", undefined, "POST")).status).toBe(200)
+    const after = await database.prepare("SELECT hex(ciphertext) AS ciphertext,key_version FROM vault_entries WHERE id=?").bind(vaultId).first<{ ciphertext: string; key_version: number }>()
+    expect(after?.ciphertext).toBe(before?.ciphertext); expect(after?.key_version).toBe(2)
+    expect(await (await call("revealVaultSecret", "admin", { id: vaultId }, "POST")).text()).toBe(vaultProfile.secret)
+    workerOptions = rotated
   })
   it.each(["sign-up/email", "admin/create-user", "admin/set-role", "admin/ban-user"])("rejects direct %s", async (path) => {
     const response = await worker.dispatchFetch(`http://localhost/api/auth/${path}`, {

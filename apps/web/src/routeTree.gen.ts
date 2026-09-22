@@ -14,6 +14,7 @@ import { Route as ForgotPasswordRouteImport } from './routes/forgot-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as TagsRouteImport } from './routes/tags'
+import { Route as VaultRouteImport } from './routes/vault'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as GroupsIndexRouteImport } from './routes/groups/index'
 import { Route as GroupsGroupIdRouteImport } from './routes/groups/$groupId'
@@ -44,6 +45,11 @@ const ResetPasswordRoute = ResetPasswordRouteImport.update({
 const TagsRoute = TagsRouteImport.update({
   id: '/tags',
   path: '/tags',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VaultRoute = VaultRouteImport.update({
+  id: '/vault',
+  path: '/vault',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -83,6 +89,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/tags': typeof TagsRoute
+  '/vault': typeof VaultRoute
   '/admin/users': typeof AdminUsersRoute
   '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
@@ -96,6 +103,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/tags': typeof TagsRoute
+  '/vault': typeof VaultRoute
   '/admin/users': typeof AdminUsersRoute
   '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
@@ -110,6 +118,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/reset-password': typeof ResetPasswordRoute
   '/tags': typeof TagsRoute
+  '/vault': typeof VaultRoute
   '/admin/users': typeof AdminUsersRoute
   '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/tags'
+    | '/vault'
     | '/admin/users'
     | '/groups/$groupId'
     | '/people/$personId'
@@ -138,6 +148,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/tags'
+    | '/vault'
     | '/admin/users'
     | '/groups/$groupId'
     | '/people/$personId'
@@ -151,6 +162,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/reset-password'
     | '/tags'
+    | '/vault'
     | '/admin/users'
     | '/groups/$groupId'
     | '/people/$personId'
@@ -165,6 +177,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   TagsRoute: typeof TagsRoute
+  VaultRoute: typeof VaultRoute
   AdminUsersRoute: typeof AdminUsersRoute
   GroupsGroupIdRoute: typeof GroupsGroupIdRoute
   PeoplePersonIdRoute: typeof PeoplePersonIdRoute
@@ -208,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/tags'
       fullPath: '/tags'
       preLoaderRoute: typeof TagsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/vault': {
+      id: '/vault'
+      path: '/vault'
+      fullPath: '/vault'
+      preLoaderRoute: typeof VaultRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -261,6 +281,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   TagsRoute: TagsRoute,
+  VaultRoute: VaultRoute,
   AdminUsersRoute: AdminUsersRoute,
   GroupsGroupIdRoute: GroupsGroupIdRoute,
   PeoplePersonIdRoute: PeoplePersonIdRoute,
