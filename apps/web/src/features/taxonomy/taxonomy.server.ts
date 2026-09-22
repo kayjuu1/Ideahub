@@ -50,9 +50,19 @@ export async function remove(db: AppDatabase, actorId: string, input: z.infer<ty
   const table = input.kind === "group" ? groups : tags
   const [existing] = await db.select({ name: table.name }).from(table).where(eq(table.id, input.id))
   if (!existing) fail(404, "This group or tag no longer exists.")
+  const at = new Date(), membershipChanges: BatchItem<"sqlite">[] = []
+  if (input.kind === "tag" || input.removeMembers) {
+    const relation = input.kind === "group" ? peopleGroups : peopleTags
+    const targetColumn = input.kind === "group" ? peopleGroups.groupId : peopleTags.tagId
+    const members = await db.select({ personId: relation.personId }).from(relation).where(eq(targetColumn, input.id))
+    for (const member of members) membershipChanges.push(
+      db.delete(relation).where(and(eq(relation.personId, member.personId), eq(targetColumn, input.id))),
+      logActivity(db, { actorId, entityType: "person", entityId: member.personId, action: `${input.kind}_removed`, metadata: { personId: member.personId, targetId: input.id, name: existing.name, reason: "deleted" }, at }, true),
+    )
+  }
   if (input.kind === "group") {
-    if (input.removeMembers) await db.batch([
-      db.delete(peopleGroups).where(eq(peopleGroups.groupId, input.id)), db.delete(groups).where(eq(groups.id, input.id)),
+    if (input.removeMembers) await atomicBatch(db, [
+      ...membershipChanges, db.delete(groups).where(eq(groups.id, input.id)),
       logActivity(db, { actorId, entityType: "group", entityId: input.id, action: "deleted", metadata: { name: existing.name, removeMembers: true } }, true),
     ])
     else {
@@ -62,8 +72,8 @@ export async function remove(db: AppDatabase, actorId: string, input: z.infer<ty
       ])
       if (!result.meta.changes) fail(409, "This group still has members. Confirm removal of all members to delete it.")
     }
-  } else await db.batch([
-    db.delete(peopleTags).where(eq(peopleTags.tagId, input.id)), db.delete(tags).where(eq(tags.id, input.id)),
+  } else await atomicBatch(db, [
+    ...membershipChanges, db.delete(tags).where(eq(tags.id, input.id)),
     logActivity(db, { actorId, entityType: "tag", entityId: input.id, action: "deleted", metadata: { name: existing.name } }, true),
   ])
   return { id: input.id }
@@ -72,9 +82,17 @@ export async function remove(db: AppDatabase, actorId: string, input: z.infer<ty
 export async function merge(db: AppDatabase, actorId: string, input: z.infer<typeof mergeTagsInput>) {
   const found = await db.select().from(tags).where(inArray(tags.id, [input.sourceId, input.targetId]))
   if (found.length !== 2) fail(404, "Both tags must exist before merging.")
-  await db.batch([
-    db.insert(peopleTags).select(sql`SELECT person_id, ${input.targetId} FROM people_tags WHERE tag_id = ${input.sourceId}`).onConflictDoNothing(),
-    db.delete(peopleTags).where(eq(peopleTags.tagId, input.sourceId)), db.delete(tags).where(eq(tags.id, input.sourceId)),
+  const members = await db.select({ personId: peopleTags.personId }).from(peopleTags).where(eq(peopleTags.tagId, input.sourceId))
+  const membershipChanges: BatchItem<"sqlite">[] = [], at = new Date()
+  for (const member of members) membershipChanges.push(
+    db.insert(peopleTags).select(sql`SELECT ${member.personId}, ${input.targetId} WHERE EXISTS (SELECT 1 FROM people_tags WHERE person_id=${member.personId} AND tag_id=${input.sourceId})`).onConflictDoNothing(),
+    db.delete(peopleTags).where(and(eq(peopleTags.personId, member.personId), eq(peopleTags.tagId, input.sourceId))),
+    logActivity(db, { actorId, entityType: "person", entityId: member.personId, action: "tag_merged", metadata: { personId: member.personId, sourceId: input.sourceId, targetId: input.targetId }, at }, true),
+  )
+  // Concurrent new source memberships make the final FK-constrained deletion
+  // fail and roll the entire batch back, rather than silently skipping an audit.
+  await atomicBatch(db, [
+    ...membershipChanges, db.delete(tags).where(eq(tags.id, input.sourceId)),
     logActivity(db, { actorId, entityType: "tag", entityId: input.targetId, action: "merged", metadata: { sourceId: input.sourceId, sourceName: found.find((tag) => tag.id === input.sourceId)?.name ?? "", targetId: input.targetId } }, true),
   ])
   return { id: input.targetId }
@@ -120,4 +138,10 @@ async function executeChanges(db: AppDatabase, statements: BatchItem<"sqlite">[]
   if (!first) return { changed: 0 }
   const results = await db.batch([first, ...rest])
   return { changed: results.filter((_, index) => index % 2 === 0).reduce((total, result) => total + result.meta.changes, 0) }
+}
+
+async function atomicBatch(db: AppDatabase, statements: BatchItem<"sqlite">[]) {
+  const [first, ...rest] = statements
+  if (!first) return
+  await db.batch([first, ...rest])
 }

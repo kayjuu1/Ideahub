@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as TagsRouteImport } from './routes/tags'
 import { Route as VaultRouteImport } from './routes/vault'
+import { Route as AdminAuditRouteImport } from './routes/admin/audit'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as GroupsIndexRouteImport } from './routes/groups/index'
 import { Route as GroupsGroupIdRouteImport } from './routes/groups/$groupId'
@@ -50,6 +51,11 @@ const TagsRoute = TagsRouteImport.update({
 const VaultRoute = VaultRouteImport.update({
   id: '/vault',
   path: '/vault',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminAuditRoute = AdminAuditRouteImport.update({
+  id: '/admin/audit',
+  path: '/admin/audit',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -90,6 +96,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/tags': typeof TagsRoute
   '/vault': typeof VaultRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/admin/users': typeof AdminUsersRoute
   '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
@@ -104,6 +111,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/tags': typeof TagsRoute
   '/vault': typeof VaultRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/admin/users': typeof AdminUsersRoute
   '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
@@ -119,6 +127,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/tags': typeof TagsRoute
   '/vault': typeof VaultRoute
+  '/admin/audit': typeof AdminAuditRoute
   '/admin/users': typeof AdminUsersRoute
   '/groups/$groupId': typeof GroupsGroupIdRoute
   '/people/$personId': typeof PeoplePersonIdRoute
@@ -135,6 +144,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/tags'
     | '/vault'
+    | '/admin/audit'
     | '/admin/users'
     | '/groups/$groupId'
     | '/people/$personId'
@@ -149,6 +159,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/tags'
     | '/vault'
+    | '/admin/audit'
     | '/admin/users'
     | '/groups/$groupId'
     | '/people/$personId'
@@ -163,6 +174,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/tags'
     | '/vault'
+    | '/admin/audit'
     | '/admin/users'
     | '/groups/$groupId'
     | '/people/$personId'
@@ -178,6 +190,7 @@ export interface RootRouteChildren {
   ResetPasswordRoute: typeof ResetPasswordRoute
   TagsRoute: typeof TagsRoute
   VaultRoute: typeof VaultRoute
+  AdminAuditRoute: typeof AdminAuditRoute
   AdminUsersRoute: typeof AdminUsersRoute
   GroupsGroupIdRoute: typeof GroupsGroupIdRoute
   PeoplePersonIdRoute: typeof PeoplePersonIdRoute
@@ -228,6 +241,13 @@ declare module '@tanstack/react-router' {
       path: '/vault'
       fullPath: '/vault'
       preLoaderRoute: typeof VaultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin/audit': {
+      id: '/admin/audit'
+      path: '/admin/audit'
+      fullPath: '/admin/audit'
+      preLoaderRoute: typeof AdminAuditRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -282,6 +302,7 @@ const rootRouteChildren: RootRouteChildren = {
   ResetPasswordRoute: ResetPasswordRoute,
   TagsRoute: TagsRoute,
   VaultRoute: VaultRoute,
+  AdminAuditRoute: AdminAuditRoute,
   AdminUsersRoute: AdminUsersRoute,
   GroupsGroupIdRoute: GroupsGroupIdRoute,
   PeoplePersonIdRoute: PeoplePersonIdRoute,
@@ -294,10 +315,11 @@ export const routeTree = rootRouteImport
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }

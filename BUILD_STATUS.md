@@ -1,5 +1,7 @@
 # Build evidence
 
+Current status: phases 0–10 passed under the owner's revised local-only completion scope. Production/email setup and remote release belong to the owner. Historical remote blockers below are retained as build history; the phase 8 scope amendment supersedes them.
+
 ## Baseline
 
 `bun run typecheck` passed before implementation: 2 successful tasks, 2 total.
@@ -144,3 +146,24 @@ bun run db:migrate:local: No migrations to apply (0004 already applied)
 ```
 
 Tests cover every role and anonymous access for all vault functions, Unicode round trips, ciphertext confidentiality, envelope tampering, fresh password confirmation, simultaneous reveal limits, audit-write failure, tombstone erasure, viewer HTTP 403 on vault paths, and rotation preserving ciphertext. Reviewed all vault `db.` calls: they receive their database from protected function context. No remote work was performed.
+
+## Phase 10 — passed locally
+
+Added explicit CSRF middleware, per-request production CSP nonces, response security headers, general D1 rate limits, sanitized validation/error handling, a root error boundary, and an admin-only full audit view. Group/tag deletion and merging now retain affected-person timeline history atomically. Added source/client artifact auditing to CI, guarded remote scripts requiring an explicit environment, and complete local/email/key-rotation/deployment/recovery documentation. Bun and the configured commit author are retained; no co-author trailers are added.
+
+```text
+bun run typecheck: Tasks: 2 successful, 2 total
+bun run build: Tasks: 1 successful, 1 total
+bun run test: Test Files 7 passed; Tests 221 passed
+bun run security:audit:
+  PASS: 39 protected functions inventoried in compiled role tests
+  PASS: db. calls reviewed in 11 server files; acquisition restricted to middleware
+  PASS: 46 client artifacts scanned; no server bindings, encryption code or secret values
+  PASS: no environment files or development email logger emitted
+Local login: HTTP 200; styled page True; X-Frame-Options DENY
+Local admin reset: HTTP 200; terminal simulated email and reset link observed (link not recorded)
+git diff --check: exit 0
+Production deploy --check: refused missing env.production as intended; no remote operation
+```
+
+The 39-function compiled inventory is exhaustive and fails if a new function lacks a matrix entry. Runtime checks prove anonymous/role behavior, nonce agreement across rendered scripts, originless/cross-origin rejection, safe HTTP 400 validation errors, and general/vault rate limits. Source review found 102 `db.` call lines, restricted to typed server services and the documented Better Auth hooks. The operator-only bootstrap is not an HTTP path. Local migrations are current. Browser E2E remains deferred as requested; production smoke tests, live email/R2 verification, backups and release remain owner work.

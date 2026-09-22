@@ -10,13 +10,14 @@
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc --noEmit",
-    "deploy": "bun run build && wrangler deploy",
+    "deploy": "bun scripts/cloudflare-command.ts deploy",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:remote": "bun scripts/cloudflare-command.ts migrate",
     "db:studio": "drizzle-kit studio",
     "cf:types": "wrangler types",
     "test": "vitest run",
+    "security:audit": "bun scripts/security-audit.ts",
     "seed:admin": "tsx ../../scripts/seed-admin.ts"
   },
   "dependencies": {

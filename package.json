@@ -15,6 +15,7 @@
     "db:studio": "bun run --cwd apps/web db:studio",
     "cf:types": "bun run --cwd apps/web cf:types",
     "test": "bun run --cwd apps/web test",
+    "security:audit": "bun run --cwd apps/web security:audit",
     "seed:admin": "bun run --cwd apps/web seed:admin",
     "setup:local": "bun apps/web/scripts/setup-local.ts"
   },

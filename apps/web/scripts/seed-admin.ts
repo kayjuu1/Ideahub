@@ -41,9 +41,12 @@ async function passwordInput(): Promise<string> {
 const { values } = parseArgs({
   options: {
     email: { type: "string" }, name: { type: "string" }, remote: { type: "boolean", default: false },
+    env: { type: "string" },
     "generate-password": { type: "boolean", default: false },
   }, strict: true,
 })
+if (values.remote && !values.env) throw new Error("Remote bootstrap requires an explicit --env with a remote D1 binding.")
+if (!values.remote && values.env) throw new Error("Use --remote with --env; local bootstrap uses the default local database.")
 const input = z.object({ email: z.email(), name: z.string().trim().min(1), password: z.string().min(12) }).parse({
   email: values.email,
   name: values.name,
@@ -51,7 +54,7 @@ const input = z.object({ email: z.email(), name: z.string().trim().min(1), passw
 })
 const platform = await getPlatformProxy<Env>({
   configPath: new URL("../wrangler.jsonc", import.meta.url).pathname.replace(/^\/(\w:)/, "$1"),
-  environment: values.remote ? "staging" : undefined,
+  environment: values.remote ? values.env : undefined,
   persist: { path: new URL("../.wrangler/state/v3", import.meta.url).pathname.replace(/^\/(\w:)/, "$1") },
   remoteBindings: values.remote,
 })
@@ -64,7 +67,7 @@ try {
   const login = await auth.api.signInEmail({ body: { email: input.email, password: input.password } })
   if (login.user.id === undefined || !login.token) throw new Error("Bootstrap login verification failed.")
   await platform.env.DB.prepare("DELETE FROM session WHERE token = ?").bind(login.token).run()
-  console.log(`Admin created in ${values.remote ? "remote staging" : "local D1"}; login verified; test session revoked. Password was not logged.`)
+  console.log(`Admin created in ${values.remote ? `remote ${values.env}` : "local D1"}; login verified; test session revoked. Password was not logged.`)
   if (values["generate-password"]) console.log("Generated password discarded. Complete the email password-reset flow before first use.")
 } finally {
   input.password = ""

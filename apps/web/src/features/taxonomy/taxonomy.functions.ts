@@ -1,3 +1,4 @@
+import { validateInput } from "../../lib/validate-input"
 import { createServerFn } from "@tanstack/react-start"
 import { z } from "zod"
 import { protectedFn } from "../../auth/middleware"
@@ -7,27 +8,27 @@ export const listTaxonomy = createServerFn({ method: "GET" }).middleware([protec
   const service = await import("./taxonomy.server")
   return service.list(context.db)
 })
-export const getMemberships = createServerFn({ method: "GET" }).middleware([protectedFn()]).validator(z.object({ personId: z.string().min(1).max(64) })).handler(async ({ context, data }) => {
+export const getMemberships = createServerFn({ method: "GET" }).middleware([protectedFn()]).validator(validateInput(z.object({ personId: z.string().min(1).max(64) }))).handler(async ({ context, data }) => {
   const service = await import("./taxonomy.server")
   return service.memberships(context.db, data.personId)
 })
-export const saveTaxonomy = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(taxonomyInput).handler(async ({ context, data }) => {
+export const saveTaxonomy = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(validateInput(taxonomyInput)).handler(async ({ context, data }) => {
   const service = await import("./taxonomy.server")
   return service.save(context.db, context.identity.user.id, data)
 })
-export const deleteTaxonomy = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(deleteTaxonomyInput).handler(async ({ context, data }) => {
+export const deleteTaxonomy = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(validateInput(deleteTaxonomyInput)).handler(async ({ context, data }) => {
   const service = await import("./taxonomy.server")
   return service.remove(context.db, context.identity.user.id, data)
 })
-export const mergeTags = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(mergeTagsInput).handler(async ({ context, data }) => {
+export const mergeTags = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(validateInput(mergeTagsInput)).handler(async ({ context, data }) => {
   const service = await import("./taxonomy.server")
   return service.merge(context.db, context.identity.user.id, data)
 })
-export const changeMembership = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(membershipInput).handler(async ({ context, data }) => {
+export const changeMembership = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(validateInput(membershipInput)).handler(async ({ context, data }) => {
   const service = await import("./taxonomy.server")
   return service.changeMembership(context.db, context.identity.user.id, data)
 })
-export const changePeopleStatus = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(bulkStatusInput).handler(async ({ context, data }) => {
+export const changePeopleStatus = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(validateInput(bulkStatusInput)).handler(async ({ context, data }) => {
   const service = await import("./taxonomy.server")
   return service.changeStatus(context.db, context.identity.user.id, data)
 })

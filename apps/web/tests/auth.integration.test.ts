@@ -27,7 +27,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
         functions.set(match[2], match[1])
       }
     }
-    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment", "getDashboard", "listManagedUsers", "createManagedUser", "changeManagedRole", "setManagedBan", "resetManagedPassword", "listVault", "createVaultEntry", "updateVaultEntry", "deleteVaultEntry", "revealVaultSecret", "reauthenticateVault", "listVaultAccess", "rewrapVaultKeys"].sort())
+    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment", "getDashboard", "listManagedUsers", "createManagedUser", "changeManagedRole", "setManagedBan", "resetManagedPassword", "listVault", "createVaultEntry", "updateVaultEntry", "deleteVaultEntry", "revealVaultSecret", "reauthenticateVault", "listVaultAccess", "rewrapVaultKeys", "listAuditLog"].sort())
     workerOptions = {
       modules: [
         { type: "ESModule", path: resolve("dist/server/index.js") },
@@ -176,6 +176,7 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     expect(logs?.n).toBe(2)
     expect((await call("deleteTaxonomy", "admin", { kind: "group", id: "group-admin" }, "POST")).status).toBe(409)
     expect((await call("deleteTaxonomy", "admin", { kind: "group", id: "group-admin", removeMembers: true }, "POST")).status).toBe(200)
+    expect((await database.prepare("SELECT count(*) AS n FROM activity_log WHERE entity_id='person-viewer' AND action='group_removed' AND json_extract(metadata,'$.targetId')='group-admin'").first<{ n: number }>())?.n).toBe(1)
   })
   it("merges overlapping tags without losing members or leaving orphans", async () => {
     await database.batch([
@@ -185,6 +186,8 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     const members = await database.prepare("SELECT person_id FROM people_tags WHERE tag_id='target-viewer' ORDER BY person_id").all<{ person_id: string }>()
     expect(members.results.map((row) => row.person_id)).toEqual(["person-admin", "person-viewer"])
     expect(await database.prepare("SELECT id FROM tags WHERE id='source-viewer'").first()).toBeNull()
+    const changes = await database.prepare("SELECT entity_id FROM activity_log WHERE action='tag_merged' AND json_extract(metadata,'$.sourceId')='source-viewer' ORDER BY entity_id").all<{ entity_id: string }>()
+    expect(changes.results.map((row) => row.entity_id)).toEqual(["person-admin", "person-viewer"])
     expect((await database.prepare("PRAGMA foreign_key_check").all()).results).toEqual([])
   })
   it("deduplicates lowercase tags and excludes deleted people from membership reads", async () => {
@@ -450,6 +453,49 @@ describe("authentication boundary (compiled Worker + D1)", () => {
     expect(after?.ciphertext).toBe(before?.ciphertext); expect(after?.key_version).toBe(2)
     expect(await (await call("revealVaultSecret", "admin", { id: vaultId }, "POST")).text()).toBe(vaultProfile.secret)
     workerOptions = rotated
+  })
+  for (const role of ["admin", "editor", "viewer", "anonymous"]) {
+    it(`${role} permission for listAuditLog`, async () => {
+      expect((await call("listAuditLog", role === "anonymous" ? undefined : role, { page: 0, entityType: "all" })).status).toBe(role === "anonymous" ? 401 : role === "admin" ? 200 : 403)
+    })
+  }
+  it("sets security headers and matches every SSR script nonce to CSP", async () => {
+    const response = await worker.dispatchFetch("http://localhost/login")
+    expect(response.status).toBe(200)
+    expect(response.headers.get("Cache-Control")).toContain("no-store")
+    expect(response.headers.get("X-Frame-Options")).toBe("DENY")
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer")
+    const policy = response.headers.get("Content-Security-Policy")!
+    const nonce = /'nonce-([^']+)'/.exec(policy)?.[1]
+    expect(nonce).toBeTruthy()
+    expect(policy).not.toContain("unsafe-eval")
+    const html = await response.text(), scripts = [...html.matchAll(/<script\b[^>]*>/g)]
+    expect(scripts.length).toBeGreaterThan(0)
+    for (const script of scripts) expect(script[0]).toContain(`nonce="${nonce}"`)
+    const second = await worker.dispatchFetch("http://localhost/login")
+    expect(second.headers.get("Content-Security-Policy")).not.toBe(policy)
+    expect((await worker.dispatchFetch("http://localhost/admin/audit", { headers: { Cookie: cookies.get("editor")! } })).status).toBe(403)
+  })
+  it("rejects cross-origin and originless server functions before mutation", async () => {
+    const url = `http://localhost/_serverFn/${functions.get("createPerson")}`
+    const headers = { "Content-Type": "application/json", Cookie: cookies.get("admin")!, "x-tsr-serverFn": "true" }
+    const body = JSON.stringify(toJSON({ data: profile }))
+    for (const extra of [{ Origin: "https://untrusted.example" }, {}]) expect((await worker.dispatchFetch(url, { method: "POST", headers: { ...headers, ...extra }, body })).status).toBe(403)
+  })
+  it("returns a safe validation error without stack, SQL, or submitted secrets", async () => {
+    const response = await call("createVaultEntry", "admin", { ...vaultProfile, label: "", secret: { hidden: "must-never-echo" } }, "POST")
+    expect(response.status).toBe(400)
+    const body = await response.text()
+    for (const forbidden of ["must-never-echo", "vault.server", "SELECT", " at ", "ZodError"]) expect(body).not.toContain(forbidden)
+  })
+  it("enforces the general write limit after authorization", async () => {
+    await database.prepare("DELETE FROM request_limits WHERE actor_id='editor'").run()
+    const now = Date.now()
+    await database.batch(Array.from({ length: 120 }, (_, index) => database.prepare("INSERT INTO request_limits(id,actor_id,scope,created_at) VALUES (?,'editor','app-write',?)").bind(`write-limit-${index}`, now)))
+    expect((await call("createPerson", "editor", profile, "POST")).status).toBe(429)
+    expect((await call("createPerson", "viewer", profile, "POST")).status).toBe(403)
+    await database.prepare("DELETE FROM request_limits WHERE actor_id='editor'").run()
   })
   it.each(["sign-up/email", "admin/create-user", "admin/set-role", "admin/ban-user"])("rejects direct %s", async (path) => {
     const response = await worker.dispatchFetch(`http://localhost/api/auth/${path}`, {

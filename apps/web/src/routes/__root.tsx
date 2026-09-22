@@ -1,4 +1,4 @@
-import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router"
+import { HeadContent, Scripts, createRootRoute, useRouter } from "@tanstack/react-router"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { ThemeProvider } from "next-themes"
 import { Toaster } from "sonner"
@@ -33,10 +33,12 @@ export const Route = createRootRoute({
       <p>The requested page could not be found.</p>
     </main>
   ),
+  errorComponent: ({ reset }) => <main className="mx-auto max-w-lg p-8"><h1 className="text-2xl font-semibold">Unable to open this page</h1><p className="my-4 text-muted-foreground">Please try again. If access has changed, sign in again or contact an administrator.</p><button className="rounded border px-4 py-2" onClick={reset}>Try again</button><a href="/login" className="ml-4 underline">Sign in</a></main>,
   shellComponent: RootDocument,
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
   const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } }))
   return (
     <html lang="en" suppressHydrationWarning>
@@ -44,7 +46,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem nonce={router.options.ssr?.nonce}>
           <QueryClientProvider client={queryClient}>{children}<Toaster richColors /></QueryClientProvider>
         </ThemeProvider>
         <Scripts />

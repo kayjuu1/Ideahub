@@ -4,7 +4,7 @@
 
 - Keep Bun 1.3.10, the Bun lockfile, and the existing Turbo monorepo.
 - Use Cloudflare Email Service for transactional invitations and password resets only.
-- Persistent vault keys belong exclusively in Worker secrets. Develop the vault in remote staging; isolated tests may use temporary in-memory keys.
+- Persistent vault keys belong exclusively in Worker secrets. The owner's later instruction selects temporary in-memory keys for local development and transfers production setup to the owner (see scope update and phase 9).
 - Editors edit/delete their own notes; admins may manage all notes.
 - Deleting a vault entry erases secret material and retains a minimal audit tombstone.
 
@@ -28,7 +28,7 @@
 
 ## Execution rule
 
-Complete phases 0–10 in order. Every phase requires passing typecheck, its acceptance evidence, and a recorded summary before starting the next. Missing remote credentials do not waive remote acceptance.
+Complete phases 0–10 in order. Every phase requires passing typecheck, its acceptance evidence, and a recorded summary before starting the next. The owner's explicit local-completion scope update supersedes the original remote acceptance gates; missing credentials alone did not waive them.
 
 ## Phase 1
 
@@ -98,3 +98,13 @@ Complete phases 0–10 in order. Every phase requires passing typecheck, its acc
 - Master-key rotation rewraps at most 100 DEKs per call, using a versioned map in the `VAULT_PREVIOUS_MASTER_KEYS` Worker secret. It preserves secret ciphertext and last-secret-rotation time; interrupted operations can be retried.
 - Secret inputs use uncontrolled password fields and are cleared on submission. Reveals return a single raw no-store response and remain only in the reveal component's local state for at most 30 seconds; blur, visibility changes, and unmount also clear them. Clipboard contents remain under the user's operating-system control.
 - Password confirmation/reveal attempts and rate-limit maintenance are security operations, not business-data edits. Successful password confirmation is audited; failed attempts consume counters without storing supplied passwords.
+
+## Phase 10
+
+- General protected-function limits are 600 reads and 120 writes per authenticated user per five minutes. They run after role authorization and use atomic D1 counters; stricter vault limits remain independent. Better Auth retains its own database-backed public endpoint limits.
+- Custom Start configuration explicitly installs CSRF middleware because defining `src/start.ts` replaces the framework default. Production script CSP uses a per-request nonce shared with SSR and the theme script. Inline styles remain allowed for component positioning/theme support; development additionally permits Vite HMR/evaluation. HTTPS adds HSTS without forcing subdomain policy on unrelated owner sites.
+- Zod schemas use a typed parsing wrapper so invalid inputs return sanitized HTTP 400 rather than Start converting issue details into generic errors. All protected error stacks are removed, and unexpected errors log only a fixed event name. Root page errors provide retry/sign-in without exposing internals.
+- Admins get a paginated/filterable full activity view in addition to vault access logs. Deleting groups/tags or merging tags records affected-person timeline events in the same mutation batch. Concurrent source membership additions force FK rollback instead of silently losing membership audit history.
+- Source audits explicitly allow Better Auth's server adapter/hooks and the operator-only seed script as database acquisition exceptions. The Better Auth browser dependency contains an inert secret-name getter, not a secret value; the artifact check tests actual local values and runtime secret accesses rather than rejecting that dependency's string label.
+- Remote scripts require an explicit configured environment. Deployment selects Cloudflare bindings at build time via `CLOUDFLARE_ENV`, scans artifacts, then uses generated Wrangler output. The owner must provide production resources and secrets. No production environment or resource was invented, and no remote action was performed in phases 9–10.
+- Browser E2E remains deferred as requested. Compiled Worker/Miniflare integration and local HTTP smoke checks are the automated acceptance evidence; production delivery/browser smoke checks and backup/restore drills remain owner follow-ups.
