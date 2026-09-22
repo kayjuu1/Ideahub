@@ -13,7 +13,7 @@ coverage
 .vinxi
 __unconfig*
 todos.json
-
+.idea
 # turbo
 .turbo
 
