@@ -127,3 +127,7 @@ wrangler login with email_sending:write: timed out waiting for authorization cod
 ```
 
 Tests cover all five admin functions for every role/anonymous, self-demotion/ban blocking, admin-created editor access, one-use invitation setup, 24-hour invitation expiry, forced session revocation, and visible failed-email status with generic public reset responses. Failure injection caught Better Auth absorbing delivery errors; persisted status now determines the admin result. Live email authorization/domain verification remains required before this phase passes. Vault and phase-10 hardening/deployment have not started. Live R2 also awaits account enablement.
+
+## Phase 8 acceptance amendment — owner requested local completion
+
+The owner now owns live Cloudflare email and production setup, and requested terminal email simulation. The development-only loopback branch prints the simulated message and setup link directly in the local terminal; the production bundle omits it. A local reset request returned HTTP 200 and emitted `[LOCAL EMAIL — NOT SENT]`. Typecheck passed (2/2 tasks) and build passed (1/1 task). The previous live-email gate is superseded by this explicit scope update; local acceptance authorizes continuing to phase 9.

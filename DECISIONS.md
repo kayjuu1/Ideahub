@@ -82,3 +82,9 @@ Complete phases 0–10 in order. Every phase requires passing typecheck, its acc
 - Management operations use the Better Auth admin plugin. Its D1 operations cannot join application audit batches, so durable intent/completion records surround them. The README documents reconciliation of unmatched intents.
 - Better Auth may absorb errors from its delivery callback. Return the persisted delivery outcome to admins rather than assuming an API return means successful sending. Public reset requests retain a generic response to avoid account enumeration.
 - Email API readiness check failed with Unauthorized 2036; the OAuth refresh timed out. Local functional verification does not waive the agreed live-email phase gate. Phase 8 may be committed as locally verified, but phases 9–10 must wait for the missing email authorization/domain readiness.
+
+## Owner scope update — local completion
+
+- The owner explicitly requested terminal email simulation and completion of the remaining phases locally, and will configure Cloudflare email and production personally. This supersedes the earlier live-email phase gate and deployment deliverable. No additional remote configuration, migration, email send, or deployment is authorized by the remaining work.
+- Local `bun run dev` prints simulated invitation/reset messages in the terminal, including the local setup link. This branch is compiled out of production and additionally requires a loopback Better Auth URL. Production continues to use the Cloudflare Email binding.
+- Phase 8's previously passing local functional checks satisfy the revised gate; phases 9 and 10 may proceed after the terminal simulation check passes.
