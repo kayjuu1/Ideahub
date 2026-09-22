@@ -1,4 +1,8 @@
 import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { ThemeProvider } from "next-themes"
+import { Toaster } from "sonner"
+import { useState } from "react"
 
 import appCss from "@workspace/ui/globals.css?url"
 
@@ -13,7 +17,7 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "TanStack Start Starter",
+        title: "IdeaGap · People & Partners",
       },
     ],
     links: [
@@ -33,13 +37,16 @@ export const Route = createRootRoute({
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 15_000 } } }))
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
       <body>
-        {children}
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <QueryClientProvider client={queryClient}>{children}<Toaster richColors /></QueryClientProvider>
+        </ThemeProvider>
         <Scripts />
       </body>
     </html>

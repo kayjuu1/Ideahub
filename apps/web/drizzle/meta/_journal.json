@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790039014709,
+      "tag": "0000_steady_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790039615755,
+      "tag": "0001_colorful_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790039641317,
+      "tag": "0002_append_only_audits",
+      "breakpoints": true
+    }
+  ]
+}
