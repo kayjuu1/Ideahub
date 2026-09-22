@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import { Workspace } from "../components/workspace"
 import { loadIdentity } from "../auth/route-access"
 import { useQuery } from "@tanstack/react-query"
@@ -11,7 +11,7 @@ export const Route = createFileRoute("/")({ beforeLoad: loadIdentity, component:
 function App() {
   const { user } = Route.useRouteContext()
   const query = useQuery({ queryKey: ["dashboard"], queryFn: () => getDashboard() })
-  return <Workspace name={user.name}>
+  return <Workspace name={user.name} role={user.role}>
     <div className="mb-7 flex items-end justify-between"><div><p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">IdeaGap relationships</p><h1 className="font-heading text-3xl font-semibold">Overview</h1></div><Link to="/people" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">Open people</Link></div>
     {query.isPending ? <><div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-5">{Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-28" />)}</div><Skeleton className="mt-6 h-80" /></> : query.isError ? <p role="alert">Unable to load the overview. Refresh to try again.</p> : <>
       <div className="grid gap-4 sm:grid-cols-3 xl:grid-cols-5">{([ ["Total people", query.data.counts.total], ["Active", query.data.counts.active], ["Paused", query.data.counts.paused], ["Alumni", query.data.counts.alumni], ["Organizations", query.data.counts.organizations] ] as const).map(([label, value]) => <div key={label} className="rounded-lg border bg-card p-5"><p className="text-sm text-muted-foreground">{label}</p><p className="mt-2 font-heading text-3xl font-semibold tabular-nums">{value}</p></div>)}</div>

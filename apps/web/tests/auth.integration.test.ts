@@ -11,6 +11,7 @@ import { z } from "zod"
 // server-function middleware chain against isolated Miniflare D1.
 describe("authentication boundary (compiled Worker + D1)", () => {
   let worker: Miniflare
+  let workerOptions: Parameters<typeof convertV4MiniflareOptions>[0]
   let database: Awaited<ReturnType<Miniflare["getD1Database"]>>
   const cookies = new Map<string, string>()
   const functions = new Map<string, string>()
@@ -25,8 +26,8 @@ describe("authentication boundary (compiled Worker + D1)", () => {
         functions.set(match[2], match[1])
       }
     }
-    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment", "getDashboard"].sort())
-    worker = new Miniflare(convertV4MiniflareOptions({
+    expect([...functions.keys()].sort()).toEqual(["createPerson", "deletePerson", "getAdminAccess", "getCurrentUser", "getPeopleFilters", "getPerson", "listPeople", "updatePerson", "listTaxonomy", "getMemberships", "saveTaxonomy", "deleteTaxonomy", "mergeTags", "changeMembership", "changePeopleStatus", "listNotes", "getTimeline", "createNote", "updateNote", "deleteNote", "listAttachments", "uploadAttachment", "downloadAttachment", "deleteAttachment", "getDashboard", "listManagedUsers", "createManagedUser", "changeManagedRole", "setManagedBan", "resetManagedPassword"].sort())
+    workerOptions = {
       modules: [
         { type: "ESModule", path: resolve("dist/server/index.js") },
         ...(await readdir(assets)).filter((name) => name.endsWith(".js")).map((name) => ({ type: "ESModule" as const, path: resolve(assets, name) })),
@@ -36,8 +37,10 @@ describe("authentication boundary (compiled Worker + D1)", () => {
       compatibilityFlags: ["nodejs_compat"],
       d1Databases: ["DB"],
       r2Buckets: ["ATTACHMENTS"],
+      email: { send_email: [{ name: "EMAIL", allowed_sender_addresses: ["noreply@ideagap.org"], allowed_destination_addresses: ["invited@example.test", "target@example.test"] }] },
       bindings: { BETTER_AUTH_SECRET: randomBytes(48).toString("base64url"), BETTER_AUTH_URL: "http://localhost" },
-    }))
+    }
+    worker = new Miniflare(convertV4MiniflareOptions(workerOptions))
     database = await worker.getD1Database("DB")
     for (const file of (await readdir("drizzle")).filter((name) => name.endsWith(".sql")).sort()) {
       const sql = await readFile(resolve("drizzle", file), "utf8")
@@ -72,6 +75,10 @@ describe("authentication boundary (compiled Worker + D1)", () => {
       await (await worker.getR2Bucket("ATTACHMENTS")).put(key, "%PDF-1.7\nfixture")
       await database.prepare("INSERT INTO attachments(id,person_id,uploaded_by,filename,content_type,size_bytes,r2_key,created_at) VALUES (?,'person-viewer',?,'fixture.pdf','application/pdf',16,?,1)").bind(`attachment-${role}`, role, key).run()
     }
+    await database.batch([
+      database.prepare("INSERT INTO user(id,name,email,email_verified,role,created_at,updated_at) VALUES ('managed-target','Managed Target','target@example.test',1,'viewer',1,1)"),
+      database.prepare("INSERT INTO account(id,account_id,provider_id,user_id,password,created_at,updated_at) VALUES ('managed-account','managed-target','credential','managed-target',?,1,1)").bind(hash),
+    ])
   }, 60_000)
 
   afterAll(async () => { await worker?.dispose() })
@@ -303,6 +310,71 @@ describe("authentication boundary (compiled Worker + D1)", () => {
       const page = await worker.dispatchFetch(`http://localhost${event.href}`, { headers: { Cookie: cookies.get("viewer") ?? "" } })
       expect(page.status).toBe(200)
     }
+  })
+  const adminCalls = [
+    { name: "listManagedUsers", method: "GET", data: undefined },
+    { name: "createManagedUser", method: "POST", data: { name: "Invited Editor", email: "invited@example.test", role: "editor" } },
+    { name: "changeManagedRole", method: "POST", data: { userId: "managed-target", role: "editor" } },
+    { name: "setManagedBan", method: "POST", data: { userId: "managed-target", banned: true, reason: "Test ban" } },
+    { name: "resetManagedPassword", method: "POST", data: { userId: "managed-target" } },
+  ]
+  for (const endpoint of adminCalls) {
+    for (const role of ["admin", "editor", "viewer"]) {
+      it(`${role} permission for ${endpoint.name}`, async () => {
+        expect((await call(endpoint.name, role, endpoint.data, endpoint.method)).status).toBe(role === "admin" ? 200 : 403)
+      })
+    }
+    it(`anonymous cannot call ${endpoint.name}`, async () => {
+      expect((await call(endpoint.name, undefined, endpoint.data, endpoint.method)).status).toBe(401)
+    })
+  }
+  it("blocks self-demotion and self-ban before changing the account", async () => {
+    expect((await call("changeManagedRole", "admin", { userId: "admin", role: "viewer" }, "POST")).status).toBe(403)
+    expect((await call("setManagedBan", "admin", { userId: "admin", banned: true }, "POST")).status).toBe(403)
+    const row = await database.prepare("SELECT role,banned FROM user WHERE id='admin'").first<{ role: string; banned: number | null }>()
+    expect(row?.role).toBe("admin")
+    expect(row?.banned).toBeFalsy()
+    expect((await call("setManagedBan", "admin", { userId: "managed-target", banned: false }, "POST")).status).toBe(200)
+  })
+  it("invitation password setup is single-use and the new editor has editor permissions", async () => {
+    const row = await database.prepare("SELECT id,email_delivery_status FROM user WHERE email='invited@example.test'").first<{ id: string; email_delivery_status: string }>()
+    expect(row?.email_delivery_status).toBe("sent")
+    const reset = await database.prepare("SELECT identifier,expires_at FROM verification WHERE value=? AND identifier LIKE 'reset-password:%'").bind(row!.id).first<{ identifier: string; expires_at: number }>()
+    expect(reset!.expires_at - Date.now()).toBeGreaterThan(23 * 3600 * 1000)
+    const token = reset!.identifier.slice("reset-password:".length)
+    const payload = JSON.stringify({ token, newPassword: password })
+    const options = { method: "POST", headers: { "Content-Type": "application/json", Origin: "http://localhost" }, body: payload }
+    expect((await worker.dispatchFetch("http://localhost/api/auth/reset-password", options)).status).toBe(200)
+    expect((await worker.dispatchFetch("http://localhost/api/auth/reset-password", options)).status).toBe(400)
+    await database.prepare("DELETE FROM rate_limit").run()
+    const login = await worker.dispatchFetch("http://localhost/api/auth/sign-in/email", { ...options, body: JSON.stringify({ email: "invited@example.test", password }) })
+    expect(login.status).toBe(200)
+    cookies.set("invited", login.headers.getSetCookie().map((value) => value.split(";")[0]).join("; "))
+    expect((await call("createPerson", "invited", { ...profile, name: "Invited editor's contact" }, "POST")).status).toBe(200)
+    for (const endpoint of adminCalls) expect((await call(endpoint.name, "invited", endpoint.data, endpoint.method)).status).toBe(403)
+    expect((await database.prepare("SELECT last_sign_in_at FROM user WHERE id=?").bind(row!.id).first<{ last_sign_in_at: number }>())!.last_sign_in_at).toBeGreaterThan(0)
+    expect((await call("resetManagedPassword", "admin", { userId: row!.id }, "POST")).status).toBe(200)
+    expect((await call("getCurrentUser", "invited")).status).toBe(401)
+  })
+  it("records delivery failure for retry without exposing tokens or account existence", async () => {
+    // Remove the email binding to model a real delivery/configuration failure;
+    // Miniflare's email simulator does not enforce recipient restrictions.
+    await worker.setOptions(convertV4MiniflareOptions({ ...workerOptions, email: { send_email: [] } }))
+    database = await worker.getD1Database("DB")
+    try {
+    const response = await call("createManagedUser", "admin", { name: "Failed delivery", email: "blocked-recipient@example.test", role: "viewer" }, "POST")
+    expect(response.status).toBe(200)
+    const transport = await response.json() as Parameters<typeof fromCrossJSON>[0]
+    const result = z.object({ result: z.object({ id: z.string(), emailSent: z.boolean() }) }).parse(fromCrossJSON(transport, { refs: new Map() })).result
+    expect(result.emailSent).toBe(false)
+    expect((await database.prepare("SELECT email_delivery_status FROM user WHERE id=?").bind(result.id).first<{ email_delivery_status: string }>())?.email_delivery_status).toBe("failed")
+    const options = { method: "POST", headers: { "Content-Type": "application/json", Origin: "http://localhost" }, body: JSON.stringify({ email: "blocked-recipient@example.test", redirectTo: "http://localhost/reset-password" }) }
+    const existing = await worker.dispatchFetch("http://localhost/api/auth/request-password-reset", options)
+    const missing = await worker.dispatchFetch("http://localhost/api/auth/request-password-reset", { ...options, body: JSON.stringify({ email: "missing@example.test", redirectTo: "http://localhost/reset-password" }) })
+    expect(existing.status).toBe(200)
+    expect(missing.status).toBe(200)
+    expect(await existing.json()).toEqual(await missing.json())
+    } finally { await worker.setOptions(convertV4MiniflareOptions(workerOptions)); database = await worker.getD1Database("DB") }
   })
   it.each(["sign-up/email", "admin/create-user", "admin/set-role", "admin/ban-user"])("rejects direct %s", async (path) => {
     const response = await worker.dispatchFetch(`http://localhost/api/auth/${path}`, {

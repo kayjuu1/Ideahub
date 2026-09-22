@@ -6,6 +6,11 @@ import { ulid } from "ulid"
 export const authOptions = {
   appName: "IdeaGap",
   emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
+  user: { additionalFields: {
+    lastSignInAt: { type: "date" as const, required: false, input: false },
+    emailDeliveryStatus: { type: "string" as const, required: false, input: false },
+    emailDeliveryAt: { type: "date" as const, required: false, input: false },
+  } },
   session: {
     expiresIn: 60 * 60 * 24,
     updateAge: 60 * 60,

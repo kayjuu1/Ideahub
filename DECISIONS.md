@@ -73,3 +73,12 @@ Complete phases 0–10 in order. Every phase requires passing typecheck, its acc
 - Organization counts normalize case/whitespace and ignore blank values. All summary and group counts exclude soft-deleted people.
 - Shared dashboard activity includes people, groups, tags, notes, and attachments only. Vault and user administration history belong to their dedicated authorized panels.
 - Events for deleted records link to their collection page; existing people and groups link directly to details so feed navigation never depends on a deleted record.
+
+## Phase 8
+
+- Send transactional messages from `noreply@ideagap.org` through a sender-restricted Cloudflare binding. Local development uses native simulated delivery and ignored local email files; no real test emails have been sent.
+- Persist last-sign-in time and latest delivery status as non-client-writable Better Auth user fields. Invitation setup uses 24-hour reset tokens; ordinary/forced reset uses one hour, with sessions revoked on password change.
+- Force reset discards a random replacement password, revokes sessions and existing reset links, then requests a fresh email. Self-service reset uses the public Better Auth token flow; the administrative force-reset control refuses the acting admin's own account to avoid accidental lockout.
+- Management operations use the Better Auth admin plugin. Its D1 operations cannot join application audit batches, so durable intent/completion records surround them. The README documents reconciliation of unmatched intents.
+- Better Auth may absorb errors from its delivery callback. Return the persisted delivery outcome to admins rather than assuming an API return means successful sending. Public reset requests retain a generic response to avoid account enumeration.
+- Email API readiness check failed with Unauthorized 2036; the OAuth refresh timed out. Local functional verification does not waive the agreed live-email phase gate. Phase 8 may be committed as locally verified, but phases 9–10 must wait for the missing email authorization/domain readiness.

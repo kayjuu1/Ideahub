@@ -22,6 +22,13 @@
       "when": 1790039641317,
       "tag": "0002_append_only_audits",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790043365575,
+      "tag": "0003_slim_jigsaw",
+      "breakpoints": true
     }
   ]
 }

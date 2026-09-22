@@ -111,3 +111,19 @@ bun run test: Test Files 6 passed; Tests 148 passed
 ```
 
 Tests cover all roles and anonymous denial, deserialize actual Worker output and compare every summary/group count with direct D1 SQL, and request every feed link with a viewer session (HTTP 200).
+
+## Phase 8 — locally verified; live email gate pending
+
+Added admin account management through Better Auth, invitation/password setup UI, sender-restricted Cloudflare Email binding, persistent last-sign-in/delivery fields, self-lockout prevention, and forced reset with session/token revocation. Auth-owned operations record durable audit intents/completions; delivery status and its audit are atomic. Applied the generated migration locally and to staging without creating a remote admin. Local administrator password setup was requested through the simulator; its link remains in the ignored local email file.
+
+```text
+bun run typecheck: Tasks: 2 successful, 2 total
+bun run build: Tasks: 1 successful, 1 total
+bun run test: Test Files 6 passed; Tests 171 passed
+0003_slim_jigsaw.sql: applied locally and remotely (4 commands each)
+local admin password-reset request: HTTP 200; simulated email file generated
+wrangler email sending list: Unauthorized, API 2036
+wrangler login with email_sending:write: timed out waiting for authorization code
+```
+
+Tests cover all five admin functions for every role/anonymous, self-demotion/ban blocking, admin-created editor access, one-use invitation setup, 24-hour invitation expiry, forced session revocation, and visible failed-email status with generic public reset responses. Failure injection caught Better Auth absorbing delivery errors; persisted status now determines the admin result. Live email authorization/domain verification remains required before this phase passes. Vault and phase-10 hardening/deployment have not started. Live R2 also awaits account enablement.

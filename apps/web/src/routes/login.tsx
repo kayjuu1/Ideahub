@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router"
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import { useForm } from "@tanstack/react-form"
 import { useState } from "react"
@@ -52,6 +53,7 @@ function Login() {
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
           <form.Subscribe selector={(state) => state.isSubmitting}>{(submitting) => <Button className="w-full" type="submit" disabled={submitting}>{submitting ? "Signing in…" : "Sign in"}</Button>}</form.Subscribe>
         </form>
+        <Link to="/forgot-password" className="mt-4 block text-sm text-primary">Forgot password or setting up your account?</Link>
         <p className="mt-6 text-xs leading-relaxed text-muted-foreground">Access is by invitation only. Contact your administrator if you need an account or help signing in.</p>
       </section>
     </main>

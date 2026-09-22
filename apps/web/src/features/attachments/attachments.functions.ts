@@ -15,13 +15,16 @@ export const uploadAttachment = createServerFn({ method: "POST" }).middleware([p
   return { ...person.data, file }
 }).handler(async ({ context, data }) => {
   const [{ env }, service] = await Promise.all([import("cloudflare:workers"), import("./attachments.server")])
+  if (!env.ATTACHMENTS) throw new AppError(503, "Attachment storage is not configured.")
   return service.upload(context.db, env.ATTACHMENTS, context.identity.user.id, data.personId, data.file)
 })
 export const downloadAttachment = createServerFn({ method: "GET" }).middleware([protectedFn("editor")]).validator(attachmentId).handler(async ({ context, data }) => {
   const [{ env }, service] = await Promise.all([import("cloudflare:workers"), import("./attachments.server")])
+  if (!env.ATTACHMENTS) throw new AppError(503, "Attachment storage is not configured.")
   return service.download(context.db, env.ATTACHMENTS, data)
 })
 export const deleteAttachment = createServerFn({ method: "POST" }).middleware([protectedFn("editor")]).validator(attachmentId).handler(async ({ context, data }) => {
   const [{ env }, service] = await Promise.all([import("cloudflare:workers"), import("./attachments.server")])
+  if (!env.ATTACHMENTS) throw new AppError(503, "Attachment storage is not configured.")
   return service.remove(context.db, env.ATTACHMENTS, context.identity.user.id, data)
 })

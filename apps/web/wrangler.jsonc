@@ -5,6 +5,7 @@
   "compatibility_date": "2026-09-22",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["noreply@ideagap.org"] }],
   "d1_databases": [
     {
       "binding": "DB",
@@ -19,6 +20,7 @@
   "env": {
     "staging": {
       "name": "ideahub-staging",
+      "send_email": [{ "name": "EMAIL", "allowed_sender_addresses": ["noreply@ideagap.org"] }],
       "r2_buckets": [],
       "d1_databases": [{
         "binding": "DB",

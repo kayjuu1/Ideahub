@@ -21,7 +21,7 @@ export function TaxonomyPage({ kind, user }: { kind: "group" | "tag"; user: { na
   const [removeMembers, setRemoveMembers] = useState(false), [target, setTarget] = useState(""), [busy, setBusy] = useState(false)
   const items = kind === "group" ? query.data?.groups : query.data?.tags
   async function refresh() { await cache.invalidateQueries(); toast.success("Changes saved") }
-  return <Workspace name={user.name}>
+  return <Workspace name={user.name} role={user.role}>
     <div className="mb-6 flex justify-between"><div><h1 className="font-heading text-3xl font-semibold capitalize">{kind}s</h1><p className="mt-1 text-sm text-muted-foreground">{kind === "group" ? "Organize people into meaningful communities." : "Keep your contact labels consistent."}</p></div>{user.role !== "viewer" && <Button onClick={() => setEditing("new")}>Add {kind}</Button>}</div>
     {query.isPending ? <Skeleton className="h-64" /> : query.isError ? <p role="alert">Unable to load {kind}s.</p> : !items?.length ? <div className="rounded-lg border p-12 text-center text-muted-foreground">No {kind}s yet — create your first one.</div> : <div className="divide-y rounded-lg border bg-card">{items.map((item) => <div key={item.id} className="flex items-center gap-4 p-4">
       <span className="size-3 rounded-full" style={{ backgroundColor: item.color }} /><div className="min-w-0 flex-1">{kind === "group" ? <Link to="/groups/$groupId" params={{ groupId: item.id }} className="font-medium hover:text-primary">{item.name}</Link> : <span className="font-medium">{item.name}</span>}<p className="text-xs text-muted-foreground">{item.memberCount} memberships</p></div>

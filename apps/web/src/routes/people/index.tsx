@@ -47,7 +47,7 @@ function PeoplePage() {
   ]), [user.role, selected])
   const table = useTable({ features, columns, data: result.data?.rows ?? emptyRows })
   const selectClass = "h-9 rounded-md border bg-background px-3 text-sm"
-  return <Workspace name={user.name}>
+  return <Workspace name={user.name} role={user.role}>
     <div className="mb-6 flex items-center justify-between"><div><h1 className="font-heading text-3xl font-semibold">People</h1><p className="mt-1 text-sm text-muted-foreground">Your contacts and the relationships behind them.</p></div>{user.role !== "viewer" && <Button onClick={() => setCreating(true)}>Add person</Button>}</div>
     <div className="mb-4 flex flex-wrap gap-2">
       <Input aria-label="Search people" placeholder="Search name, email, organization…" className="w-80" value={search} onChange={(event) => setSearch(event.target.value)} />
